@@ -1,0 +1,89 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products     Product[]
+  liveSessions LiveSession[]
+  messages     Message[]
+
+  @@map("users")
+}
+
+model Product {
+  id        String   @id @default(uuid())
+  title     String
+  price     Float
+  image     String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  sessionProducts SessionProduct[]
+
+  @@map("products")
+}
+
+model LiveSession {
+  id         String   @id @default(uuid())
+  title      String   @default("Live Session")
+  isLive     Boolean  @default(false)
+  startedAt  DateTime?
+  endedAt    DateTime?
+  streamUrl  String?
+  streamType String   @default("mock") // "mock" | "agora" | "livekit"
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  hostId String
+  host   User   @relation(fields: [hostId], references: [id], onDelete: Cascade)
+
+  messages        Message[]
+  sessionProducts SessionProduct[]
+
+  @@map("live_sessions")
+}
+
+// Join table: allows showcasing multiple products per session
+model SessionProduct {
+  id        String   @id @default(uuid())
+  addedAt   DateTime @default(now())
+
+  sessionId String
+  session   LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, productId])
+  @@map("session_products")
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  type      String   @default("question") // "reaction" | "question"
+  content   String
+  createdAt DateTime @default(now())
+
+  sessionId String
+  session   LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+}
