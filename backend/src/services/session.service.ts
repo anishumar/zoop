@@ -84,6 +84,37 @@ export class SessionService {
     return { sessions, total, page, totalPages: Math.ceil(total / limit) };
   }
 
+  static async listLiveFollowing(userId: string, page = 1, limit = 20) {
+    const skip = (page - 1) * limit;
+
+    // Get IDs of users this person follows
+    const follows = await prisma.follow.findMany({
+      where: { followerId: userId },
+      select: { followingId: true },
+    });
+    const followedIds = follows.map((f) => f.followingId);
+
+    if (followedIds.length === 0) {
+      return { sessions: [], total: 0, page, totalPages: 0 };
+    }
+
+    const where = { isLive: true, hostId: { in: followedIds } };
+    const [sessions, total] = await Promise.all([
+      prisma.liveSession.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { startedAt: "desc" },
+        include: {
+          host: { select: { id: true, name: true } },
+          sessionProducts: { include: { product: true } },
+        },
+      }),
+      prisma.liveSession.count({ where }),
+    ]);
+    return { sessions, total, page, totalPages: Math.ceil(total / limit) };
+  }
+
   static async getById(id: string) {
     const session = await prisma.liveSession.findUnique({
       where: { id },

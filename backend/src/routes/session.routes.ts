@@ -3,6 +3,7 @@ import {
   createSession,
   endSession,
   listLiveSessions,
+  listLiveFollowingSessions,
   getSession,
   addProductToSession,
   removeProductFromSession,
@@ -20,6 +21,8 @@ router.get("/:id", getSession);
 router.get("/:id/analytics", getSessionAnalytics);
 
 router.use(authenticate);
+
+router.get("/live/following", listLiveFollowingSessions);
 
 router.post(
   "/",

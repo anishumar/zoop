@@ -5,6 +5,16 @@ import { ApiError } from "../utils/ApiError";
 
 const SALT_ROUNDS = 10;
 
+const USER_FIELDS = {
+  id: true,
+  name: true,
+  email: true,
+  bio: true,
+  phone: true,
+  avatarUrl: true,
+  createdAt: true,
+};
+
 export class AuthService {
   static async signup(name: string, email: string, password: string) {
     const existing = await prisma.user.findUnique({ where: { email } });
@@ -16,7 +26,7 @@ export class AuthService {
 
     const user = await prisma.user.create({
       data: { name, email, password: hashedPassword },
-      select: { id: true, name: true, email: true, createdAt: true },
+      select: USER_FIELDS,
     });
 
     const token = AuthService.generateToken(user.id);
@@ -35,8 +45,9 @@ export class AuthService {
     }
 
     const token = AuthService.generateToken(user.id);
+    const { password: _, ...safeUser } = user;
     return {
-      user: { id: user.id, name: user.name, email: user.email, createdAt: user.createdAt },
+      user: safeUser,
       token,
     };
   }
@@ -44,7 +55,7 @@ export class AuthService {
   static async getProfile(userId: string) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, name: true, email: true, createdAt: true },
+      select: USER_FIELDS,
     });
     if (!user) throw new ApiError(404, "User not found");
     return user;

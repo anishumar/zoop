@@ -11,15 +11,19 @@ export const createPresignedUpload = catchAsync(async (req: Request, res: Respon
     size?: number;
   };
 
-  if (entity !== "product") {
-    throw new ApiError(400, "Unsupported upload entity");
+  if (!entity || !['product', 'avatar'].includes(entity)) {
+    throw new ApiError(400, "Unsupported upload entity. Use 'product' or 'avatar'");
   }
 
   if (!mimeType || size === undefined) {
     throw new ApiError(400, "mimeType and size are required");
   }
 
-  const upload = await StorageService.createProductImagePresign({
+  const presignFn = entity === 'avatar'
+    ? StorageService.createAvatarPresign
+    : StorageService.createProductImagePresign;
+
+  const upload = await presignFn.call(StorageService, {
     userId: req.user!.userId,
     mimeType,
     size: Number(size),

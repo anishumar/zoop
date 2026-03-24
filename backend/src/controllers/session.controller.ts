@@ -22,6 +22,13 @@ export const listLiveSessions = catchAsync(async (req: Request, res: Response) =
   sendSuccess(res, result);
 });
 
+export const listLiveFollowingSessions = catchAsync(async (req: Request, res: Response) => {
+  const page = parseInt(String(req.query.page)) || 1;
+  const limit = parseInt(String(req.query.limit)) || 20;
+  const result = await SessionService.listLiveFollowing(req.user!.userId, page, limit);
+  sendSuccess(res, result);
+});
+
 export const getSession = catchAsync(async (req: Request, res: Response) => {
   const session = await SessionService.getById(String(req.params.id));
   sendSuccess(res, session);

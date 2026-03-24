@@ -11,6 +11,7 @@ import {
   Modal,
   Platform,
   KeyboardAvoidingView,
+  ActivityIndicator,
 } from "react-native";
 import { useRouter, useFocusEffect, Stack } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -26,8 +27,12 @@ interface SessionListResponse {
   totalPages: number;
 }
 
+type TabKey = "live" | "following";
+
 export default function HomeScreen() {
+  const [activeTab, setActiveTab] = useState<TabKey>("live");
   const [sessions, setSessions] = useState<LiveSession[]>([]);
+  const [followingSessions, setFollowingSessions] = useState<LiveSession[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [showGoLive, setShowGoLive] = useState(false);
   const [sessionTitle, setSessionTitle] = useState("");
@@ -36,6 +41,8 @@ export default function HomeScreen() {
   const styles = useMemo(() => createStyles(theme), [theme]);
   const router = useRouter();
   const { user } = useAuth();
+  const [followedIds, setFollowedIds] = useState<Set<string>>(new Set());
+  const [followingId, setFollowingId] = useState<string | null>(null);
 
   const fetchSessions = useCallback(async () => {
     try {
@@ -46,16 +53,57 @@ export default function HomeScreen() {
     }
   }, []);
 
+  const fetchFollowingSessions = useCallback(async () => {
+    try {
+      const res = await apiClient<ApiResponse<SessionListResponse>>("/sessions/live/following");
+      setFollowingSessions(res.data.sessions);
+    } catch (err: any) {
+      console.error("Failed to fetch following sessions:", err.message);
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       fetchSessions();
-    }, [fetchSessions])
+      fetchFollowing();
+      fetchFollowingSessions();
+    }, [fetchSessions, fetchFollowingSessions])
   );
 
   async function handleRefresh() {
     setRefreshing(true);
-    await fetchSessions();
+    await Promise.all([fetchSessions(), fetchFollowing(), fetchFollowingSessions()]);
     setRefreshing(false);
+  }
+
+  const displayedSessions = activeTab === "live" ? sessions : followingSessions;
+
+  async function fetchFollowing() {
+    try {
+      const res = await apiClient<ApiResponse<{ users: { id: string }[] }>>("/users/following");
+      setFollowedIds(new Set((res.data.users || []).map((u) => u.id)));
+    } catch {
+      // silently fail — not critical
+    }
+  }
+
+  async function handleFollow(hostId: string, e: any) {
+    e.stopPropagation();
+    if (!user || hostId === user.id) return;
+    const isFollowing = followedIds.has(hostId);
+    setFollowingId(hostId);
+    try {
+      await apiClient(`/users/${hostId}/${isFollowing ? "unfollow" : "follow"}`, { method: "POST" });
+      setFollowedIds((prev) => {
+        const next = new Set(prev);
+        isFollowing ? next.delete(hostId) : next.add(hostId);
+        return next;
+      });
+    } catch (err: any) {
+      Alert.alert("Error", err.message);
+    } finally {
+      setFollowingId(null);
+    }
   }
 
   async function handleGoLive() {
@@ -80,12 +128,14 @@ export default function HomeScreen() {
   }
 
   function renderSession({ item }: { item: LiveSession }) {
+    const isOwn = item.hostId === user?.id;
+    const isFollowed = followedIds.has(item.hostId);
+    const isLoadingFollow = followingId === item.hostId;
     return (
       <TouchableOpacity
         style={styles.sessionCard}
         onPress={() => {
-          const isHostSession = item.hostId === user?.id;
-          router.push(isHostSession ? `/host/${item.id}` : `/viewer/${item.id}`);
+          router.push(isOwn ? `/host/${item.id}` : `/viewer/${item.id}`);
         }}
         activeOpacity={0.7}
       >
@@ -100,12 +150,30 @@ export default function HomeScreen() {
           <Text style={styles.sessionTitle} numberOfLines={1}>{item.title}</Text>
           <View style={styles.sessionMeta}>
             <Text style={styles.sessionHost}>{item.host?.name || "Unknown"}</Text>
-            {item.viewerCount > 0 && (
-              <View style={styles.sessionViewers}>
-                <Ionicons name="eye-outline" size={14} color={theme.textMuted} />
-                <Text style={styles.sessionViewersText}>{item.viewerCount}</Text>
-              </View>
-            )}
+            <View style={styles.sessionMetaRight}>
+              {item.viewerCount > 0 && (
+                <View style={styles.sessionViewers}>
+                  <Ionicons name="eye-outline" size={14} color={theme.textMuted} />
+                  <Text style={styles.sessionViewersText}>{item.viewerCount}</Text>
+                </View>
+              )}
+              {!isOwn && (
+                <TouchableOpacity
+                  style={[styles.followButton, isFollowed && styles.followButtonActive]}
+                  onPress={(e) => handleFollow(item.hostId, e)}
+                  disabled={isLoadingFollow}
+                  activeOpacity={0.75}
+                >
+                  {isLoadingFollow ? (
+                    <ActivityIndicator size="small" color={isFollowed ? theme.textMuted : theme.textOnAccent} />
+                  ) : (
+                    <Text style={[styles.followButtonText, isFollowed && styles.followButtonTextActive]}>
+                      {isFollowed ? "Following" : "Follow"}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
         </View>
       </TouchableOpacity>
@@ -124,17 +192,48 @@ export default function HomeScreen() {
           ),
         }}
       />
+
+      <View style={styles.segmentedWrapper}>
+        <View style={styles.segmentedControl}>
+          <TouchableOpacity
+            style={[styles.segmentTab, activeTab === "live" && styles.segmentTabActive]}
+            onPress={() => setActiveTab("live")}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.segmentText, activeTab === "live" && styles.segmentTextActive]}>Live</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.segmentTab, activeTab === "following" && styles.segmentTabActive]}
+            onPress={() => setActiveTab("following")}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.segmentText, activeTab === "following" && styles.segmentTextActive]}>Following</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
       <FlatList
-        data={sessions}
+        data={displayedSessions}
         keyExtractor={(item) => item.id}
         renderItem={renderSession}
         contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.accent} />}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Ionicons name="radio-outline" size={56} color={theme.textMuted} style={styles.emptyEmoji} />
-            <Text style={styles.emptyTitle}>No live sessions</Text>
-            <Text style={styles.emptySubtitle}>Be the first to go live!</Text>
+            <Ionicons
+              name={activeTab === "following" ? "people-outline" : "radio-outline"}
+              size={56}
+              color={theme.textMuted}
+              style={styles.emptyEmoji}
+            />
+            <Text style={styles.emptyTitle}>
+              {activeTab === "following" ? "No live from people you follow" : "No live sessions"}
+            </Text>
+            <Text style={styles.emptySubtitle}>
+              {activeTab === "following"
+                ? "Follow creators to see their streams here"
+                : "Be the first to go live!"}
+            </Text>
           </View>
         }
       />
@@ -183,6 +282,39 @@ export default function HomeScreen() {
 const createStyles = (theme: AppTheme) =>
   StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.background },
+  segmentedWrapper: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
+  segmentedControl: {
+    flexDirection: "row",
+    backgroundColor: theme.surfaceAlt,
+    borderRadius: 12,
+    padding: 3,
+  },
+  segmentTab: {
+    flex: 1,
+    paddingVertical: 9,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  segmentTabActive: {
+    backgroundColor: theme.surface,
+    ...(Platform.OS === "ios"
+      ? { shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 3 }
+      : { elevation: 2 }),
+  },
+  segmentText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: theme.textMuted,
+  },
+  segmentTextActive: {
+    color: theme.text,
+    fontWeight: "700",
+  },
   list: { padding: 16, paddingBottom: 100 },
   sessionCard: {
     backgroundColor: theme.surface,
@@ -212,8 +344,28 @@ const createStyles = (theme: AppTheme) =>
   placeholderEmoji: { marginBottom: 0 },
   sessionInfo: { padding: 14 },
   sessionTitle: { fontSize: 17, fontWeight: "700", color: theme.text },
-  sessionMeta: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 4 },
-  sessionHost: { fontSize: 14, color: theme.textMuted },
+  sessionMeta: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 6 },
+  sessionMetaRight: { flexDirection: "row", alignItems: "center", gap: 10 },
+  sessionHost: { fontSize: 14, color: theme.textMuted, flex: 1 },
+  followButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderRadius: 20,
+    backgroundColor: theme.accent,
+  },
+  followButtonActive: {
+    backgroundColor: "transparent",
+    borderWidth: 1,
+    borderColor: theme.border,
+  },
+  followButtonText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: theme.textOnAccent,
+  },
+  followButtonTextActive: {
+    color: theme.textMuted,
+  },
   sessionViewers: { flexDirection: "row", alignItems: "center", gap: 4 },
   sessionViewersText: { fontSize: 13, color: theme.textMuted, fontWeight: "600" },
   empty: { alignItems: "center", marginTop: 100 },

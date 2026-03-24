@@ -101,4 +101,34 @@ export class StorageService {
       headers: { "Content-Type": input.mimeType },
     };
   }
+
+  static async createAvatarPresign(input: PresignInput): Promise<PresignOutput> {
+    ensureStorageConfig();
+
+    if (!ALLOWED_MIME_TYPES.has(input.mimeType)) {
+      throw new ApiError(400, "Only JPEG, PNG, and WEBP images are allowed");
+    }
+
+    if (!Number.isFinite(input.size) || input.size <= 0 || input.size > MAX_UPLOAD_BYTES) {
+      throw new ApiError(400, `Image size must be between 1 byte and ${MAX_UPLOAD_BYTES} bytes`);
+    }
+
+    const ext = extensionForMime(input.mimeType);
+    const key = `avatars/${input.userId}/${randomUUID()}.${ext}`;
+
+    const command = new PutObjectCommand({
+      Bucket: bucket!,
+      Key: key,
+      ContentType: input.mimeType,
+    });
+
+    const uploadUrl = await getSignedUrl(this.getClient(), command, { expiresIn: 60 * 5 });
+
+    return {
+      uploadUrl,
+      key,
+      publicUrl: buildPublicUrl(key),
+      headers: { "Content-Type": input.mimeType },
+    };
+  }
 }

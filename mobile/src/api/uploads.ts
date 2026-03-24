@@ -43,3 +43,33 @@ export async function uploadProductImage(asset: UploadAsset) {
     imageUrl: presign.data.publicUrl,
   };
 }
+
+export async function uploadAvatarImage(asset: UploadAsset) {
+  const presign = await apiClient<ApiResponse<PresignResponse>>("/uploads/presign", {
+    method: "POST",
+    body: {
+      entity: "avatar",
+      mimeType: asset.mimeType,
+      size: asset.fileSize,
+    },
+  });
+
+  const blob = await (await fetch(asset.uri)).blob();
+  const putRes = await fetch(presign.data.uploadUrl, {
+    method: "PUT",
+    headers: {
+      ...(presign.data.headers || {}),
+      "Content-Type": asset.mimeType,
+    },
+    body: blob,
+  });
+
+  if (!putRes.ok) {
+    throw new Error("Avatar upload failed");
+  }
+
+  return {
+    avatarKey: presign.data.key,
+    avatarUrl: presign.data.publicUrl,
+  };
+}
