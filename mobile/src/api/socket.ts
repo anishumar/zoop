@@ -5,14 +5,26 @@ import { API_ORIGIN } from "./config";
 let socket: Socket | null = null;
 
 export async function connectSocket(): Promise<Socket> {
-  if (socket?.connected) return socket;
-
   const token = await AsyncStorage.getItem("token");
 
-  socket = io(API_ORIGIN, {
-    auth: { token },
-    transports: ["websocket"],
-  });
+  if (!socket) {
+    socket = io(API_ORIGIN, {
+      auth: { token },
+      transports: ["polling", "websocket"],
+      timeout: 10000,
+      reconnection: true,
+    });
+
+    socket.on("connect_error", (error) => {
+      console.error("Socket connect_error:", error.message);
+    });
+  } else {
+    socket.auth = { token };
+
+    if (!socket.connected && !socket.active) {
+      socket.connect();
+    }
+  }
 
   return socket;
 }

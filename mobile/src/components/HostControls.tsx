@@ -9,6 +9,8 @@ interface HostControlsProps {
   onToggleCamera: () => void;
   onToggleMic: () => void;
   onFlipCamera: () => void;
+  onAiInsights?: () => void;
+  aiLoading?: boolean;
 }
 
 export default function HostControls({
@@ -18,6 +20,8 @@ export default function HostControls({
   onToggleCamera,
   onToggleMic,
   onFlipCamera,
+  onAiInsights,
+  aiLoading,
 }: HostControlsProps) {
   return (
     <View style={styles.container}>
@@ -57,9 +61,27 @@ export default function HostControls({
           style={styles.controlIcon}
         />
         <Text style={styles.controlLabel}>
-          {isFrontCamera ? "Back" : "Front"}
+          Reverse
         </Text>
       </TouchableOpacity>
+
+      {onAiInsights && (
+        <TouchableOpacity 
+          style={[styles.controlButton, aiLoading && styles.aiLoading]} 
+          onPress={onAiInsights}
+          disabled={aiLoading}
+        >
+          <Ionicons
+            name="sparkles"
+            size={22}
+            color="#ec4899"
+            style={styles.controlIcon}
+          />
+          <Text style={styles.controlLabel}>
+            {aiLoading ? "Thinking" : "AI"}
+          </Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -92,5 +114,8 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "600",
     marginTop: 4,
+  },
+  aiLoading: {
+    opacity: 0.6,
   },
 });

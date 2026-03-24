@@ -101,6 +101,24 @@ export function initializeSocket(httpServer: HttpServer) {
       }
     });
 
+    socket.on("send_host_reply", async (data: { sessionId: string; content: string }) => {
+      if (!isValidSessionId(data.sessionId) || !isSocketInSession(data.sessionId, socket.id)) return;
+      if (!data.content?.trim() || data.content.length > 500) return;
+      if (!(await isHostForSession(data.sessionId, user.userId))) return;
+
+      try {
+        const message = await MessageService.create(
+          data.sessionId,
+          user.userId,
+          "host_reply",
+          data.content.trim()
+        );
+        io.to(data.sessionId).emit("new_host_reply", message);
+      } catch {
+        socket.emit("error", { message: "Failed to send host reply" });
+      }
+    });
+
     socket.on("host_stream_started", async (data: { sessionId: string }) => {
       if (!isValidSessionId(data.sessionId)) return;
       if (!(await isHostForSession(data.sessionId, user.userId))) return;

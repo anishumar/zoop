@@ -11,8 +11,10 @@ import {
   Modal,
   Platform,
   Image,
+  KeyboardAvoidingView,
+  ScrollView,
 } from "react-native";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, Stack } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
 import { apiClient } from "../../src/api/client";
@@ -28,6 +30,8 @@ interface ProductListResponse {
   totalPages: number;
 }
 
+
+
 const PRODUCT_SIZE_OPTIONS = ["S", "M", "L", "XL", "Free Size"] as const;
 
 export default function ProductsScreen() {
@@ -42,6 +46,7 @@ export default function ProductsScreen() {
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
   const theme = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const [selectedImage, setSelectedImage] = useState<{
@@ -182,13 +187,13 @@ export default function ProductsScreen() {
     try {
       const productRes = editingProduct
         ? await apiClient<ApiResponse<Product>>(`/products/${editingProduct.id}`, {
-            method: "PUT",
-            body: { title: title.trim(), price: priceNum, quantity: quantityNum, sizes: selectedSizes },
-          })
+          method: "PUT",
+          body: { title: title.trim(), price: priceNum, quantity: quantityNum, sizes: selectedSizes },
+        })
         : await apiClient<ApiResponse<Product>>("/products", {
-            method: "POST",
-            body: { title: title.trim(), price: priceNum, quantity: quantityNum, sizes: selectedSizes },
-          });
+          method: "POST",
+          body: { title: title.trim(), price: priceNum, quantity: quantityNum, sizes: selectedSizes },
+        });
 
       if (selectedImage) {
         const uploaded = await uploadProductImage(selectedImage);
@@ -310,6 +315,8 @@ export default function ProductsScreen() {
     await handleDelete(productId);
   }
 
+
+
   function renderProduct({ item }: { item: Product }) {
     return (
       <View style={[styles.productCard, deletingId === item.id && { opacity: 0.6 }]}>
@@ -332,9 +339,7 @@ export default function ProductsScreen() {
           <Text style={styles.productPrice}>₹{item.price.toFixed(2)}</Text>
           <Text style={styles.productMeta}>Qty: {item.quantity}</Text>
           <Text style={styles.productMeta}>Sizes: {item.sizes?.join(", ") || "Not set"}</Text>
-          <Text style={styles.productHint}>
-            {deletingId === item.id ? "Deleting..." : "Tap the menu for options"}
-          </Text>
+          {deletingId === item.id && <Text style={styles.productHint}>Deleting...</Text>}
         </View>
         <TouchableOpacity
           style={styles.optionsButton}
@@ -349,6 +354,16 @@ export default function ProductsScreen() {
 
   return (
     <View style={styles.container}>
+      <Stack.Screen
+        options={{
+          headerRight: () => (
+            <TouchableOpacity style={styles.headerPill} onPress={openCreateModal}>
+              <Ionicons name="add" size={18} color={theme.textOnAccent} />
+              <Text style={styles.headerPillText}>Product</Text>
+            </TouchableOpacity>
+          ),
+        }}
+      />
       <FlatList
         data={products}
         keyExtractor={(item) => item.id}
@@ -364,96 +379,109 @@ export default function ProductsScreen() {
         }
       />
 
-      <TouchableOpacity style={styles.addButton} onPress={openCreateModal}>
-        <Text style={styles.addButtonText}>+ Add Product</Text>
-      </TouchableOpacity>
-
-      <Modal visible={showCreate} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{editingProduct ? "Edit Product" : "New Product"}</Text>
-
-            <Text style={styles.label}>Name</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter product name"
-              placeholderTextColor="#64748b"
-              value={title}
-              onChangeText={setTitle}
+      <Modal visible={showCreate} transparent animationType="slide" onRequestClose={resetForm}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : Platform.OS === "android" ? "height" : undefined}
+        >
+          <View style={styles.modalOverlay}>
+            <TouchableOpacity
+              style={StyleSheet.absoluteFill}
+              activeOpacity={1}
+              onPress={resetForm}
             />
+            <View style={[styles.modalContent, styles.formModalContent]}>
+              <ScrollView
+                contentContainerStyle={styles.formScrollContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                <Text style={styles.modalTitle}>{editingProduct ? "Edit Product" : "New Product"}</Text>
+                
+                <Text style={styles.label}>Name</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter product name"
+                  placeholderTextColor="#64748b"
+                  value={title}
+                  onChangeText={setTitle}
+                  autoFocus={Platform.OS === "web"}
+                />
+                
+                <Text style={styles.label}>Price (₹)</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="₹0"
+                  placeholderTextColor="#64748b"
+                  value={price}
+                  onChangeText={setPrice}
+                  keyboardType="decimal-pad"
+                />
 
-            <Text style={styles.label}>Price (₹)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="₹0"
-              placeholderTextColor="#64748b"
-              value={price}
-              onChangeText={setPrice}
-              keyboardType="decimal-pad"
-            />
+                <Text style={styles.label}>Quantity</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="0"
+                  placeholderTextColor="#64748b"
+                  value={quantity}
+                  onChangeText={setQuantity}
+                  keyboardType="number-pad"
+                />
 
-            <Text style={styles.label}>Quantity</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="0"
-              placeholderTextColor="#64748b"
-              value={quantity}
-              onChangeText={setQuantity}
-              keyboardType="number-pad"
-            />
+                <Text style={styles.label}>Sizes</Text>
+                <View style={styles.sizeOptions}>
+                  {PRODUCT_SIZE_OPTIONS.map((size) => {
+                    const isSelected = selectedSizes.includes(size);
+                    return (
+                      <TouchableOpacity
+                        key={size}
+                        style={[styles.sizeChip, isSelected && styles.sizeChipSelected]}
+                        onPress={() => toggleSize(size)}
+                      >
+                        <Text style={[styles.sizeChipText, isSelected && styles.sizeChipTextSelected]}>
+                          {size}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
 
-            <Text style={styles.label}>Sizes</Text>
-            <View style={styles.sizeOptions}>
-              {PRODUCT_SIZE_OPTIONS.map((size) => {
-                const isSelected = selectedSizes.includes(size);
-                return (
+                <Text style={styles.label}>Product Image</Text>
+                <TouchableOpacity style={styles.imagePickerBtn} onPress={handlePickImage}>
+                  <Text style={styles.imagePickerBtnText}>
+                    {selectedImage ? "Change Image" : Platform.OS === "web" ? "Choose from Gallery" : "Camera or Gallery"}
+                  </Text>
+                </TouchableOpacity>
+                {selectedImage && (
+                  <View style={styles.imagePreviewWrap}>
+                    <Image source={{ uri: selectedImage.uri }} style={styles.imagePreview} />
+                    <TouchableOpacity style={styles.removeImageBtn} onPress={() => setSelectedImage(null)}>
+                      <Text style={styles.removeImageText}>Remove</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                <View style={styles.modalButtons}>
                   <TouchableOpacity
-                    key={size}
-                    style={[styles.sizeChip, isSelected && styles.sizeChipSelected]}
-                    onPress={() => toggleSize(size)}
+                    style={styles.cancelBtn}
+                    onPress={resetForm}
                   >
-                    <Text style={[styles.sizeChipText, isSelected && styles.sizeChipTextSelected]}>
-                      {size}
+                    <Text style={styles.cancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.createBtn, creating && { opacity: 0.6 }]}
+                    onPress={handleSubmitProduct}
+                    disabled={creating}
+                  >
+                    <Text style={styles.createText}>
+                      {creating ? (editingProduct ? "Saving..." : "Adding...") : editingProduct ? "Save Changes" : "Add Product"}
                     </Text>
                   </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            <Text style={styles.label}>Product Image</Text>
-            <TouchableOpacity style={styles.imagePickerBtn} onPress={handlePickImage}>
-              <Text style={styles.imagePickerBtnText}>
-                {selectedImage ? "Change Image" : Platform.OS === "web" ? "Choose from Gallery" : "Camera or Gallery"}
-              </Text>
-            </TouchableOpacity>
-            {selectedImage && (
-              <View style={styles.imagePreviewWrap}>
-                <Image source={{ uri: selectedImage.uri }} style={styles.imagePreview} />
-                <TouchableOpacity style={styles.removeImageBtn} onPress={() => setSelectedImage(null)}>
-                  <Text style={styles.removeImageText}>Remove</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={resetForm}
-              >
-                <Text style={styles.cancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.createBtn, creating && { opacity: 0.6 }]}
-                onPress={handleSubmitProduct}
-                disabled={creating}
-              >
-                <Text style={styles.createText}>
-                  {creating ? (editingProduct ? "Saving..." : "Adding...") : editingProduct ? "Save Changes" : "Add Product"}
-                </Text>
-              </TouchableOpacity>
+                </View>
+              </ScrollView>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal
@@ -478,6 +506,7 @@ export default function ProductsScreen() {
             )}
 
             <View style={styles.actionButtons}>
+
               <TouchableOpacity style={styles.actionPrimaryBtn} onPress={handleEditSelectedProduct}>
                 <Ionicons name="create-outline" size={18} color={theme.text} />
                 <Text style={styles.actionPrimaryText}>Edit</Text>
@@ -498,6 +527,8 @@ export default function ProductsScreen() {
               </TouchableOpacity>
             </View>
 
+
+
             <TouchableOpacity style={styles.actionCancelBtn} onPress={() => setActionProduct(null)}>
               <Text style={styles.cancelText}>Cancel</Text>
             </TouchableOpacity>
@@ -510,157 +541,167 @@ export default function ProductsScreen() {
 
 const createStyles = (theme: AppTheme) =>
   StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.background },
-  list: { padding: 16, paddingBottom: 100 },
-  productCard: {
-    backgroundColor: theme.surface,
-    borderRadius: 12,
-    padding: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  productIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: theme.surfaceAlt,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  productEmoji: {},
-  productImage: { width: 48, height: 48, borderRadius: 12 },
-  productInfo: { flex: 1, marginLeft: 14 },
-  productTitle: { fontSize: 16, fontWeight: "600", color: theme.text },
-  productPrice: { fontSize: 15, color: theme.textMuted, fontWeight: "700", marginTop: 2 },
-  productMeta: { fontSize: 12, color: theme.textMuted, marginTop: 4 },
-  productHint: { fontSize: 12, color: theme.textMuted, marginTop: 6 },
-  optionsButton: {
-    padding: 4,
-    marginLeft: 8,
-  },
-  empty: { alignItems: "center", marginTop: 100 },
-  emptyEmoji: { marginBottom: 16 },
-  emptyTitle: { fontSize: 20, fontWeight: "700", color: theme.text },
-  emptySubtitle: { fontSize: 15, color: theme.textMuted, marginTop: 4, textAlign: "center" },
-  addButton: {
-    position: "absolute",
-    bottom: 24,
-    left: 24,
-    right: 24,
-    backgroundColor: theme.accent,
-    borderRadius: 16,
-    padding: 18,
-    alignItems: "center",
-  },
-  addButtonText: { color: theme.textOnAccent, fontSize: 16, fontWeight: "700" },
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" },
-  modalContent: {
-    backgroundColor: theme.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    paddingBottom: 40,
-  },
-  modalTitle: { fontSize: 22, fontWeight: "700", color: theme.text, marginBottom: 12 },
-  actionSummary: {
-    backgroundColor: theme.background,
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: theme.border,
-    marginBottom: 18,
-  },
-  actionName: { fontSize: 18, fontWeight: "700", color: theme.text },
-  actionPrice: { fontSize: 15, color: theme.textMuted, fontWeight: "700", marginTop: 6 },
-  actionMeta: { fontSize: 13, color: theme.textMuted, marginTop: 4 },
-  actionButtons: { gap: 12 },
-  actionPrimaryBtn: {
-    backgroundColor: theme.surfaceAlt,
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-  },
-  actionPrimaryText: { color: theme.text, fontWeight: "700", fontSize: 16 },
-  actionDeleteBtn: { backgroundColor: "#7f1d1d" },
-  actionDeleteText: { color: "#fecaca", fontWeight: "700", fontSize: 16 },
-  actionCancelBtn: {
-    marginTop: 14,
-    paddingVertical: 14,
-    borderRadius: 12,
-    backgroundColor: theme.surfaceAlt,
-    alignItems: "center",
-  },
-  label: { fontSize: 14, fontWeight: "600", color: theme.textMuted, marginBottom: 6, marginTop: 14 },
-  input: {
-    backgroundColor: theme.background,
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
-    color: theme.text,
-    borderWidth: 1,
-    borderColor: theme.border,
-  },
-  imagePickerBtn: {
-    marginTop: 10,
-    backgroundColor: theme.surfaceAlt,
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  imagePickerBtnText: { color: theme.text, fontWeight: "600", fontSize: 14 },
-  sizeOptions: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-    marginTop: 10,
-  },
-  sizeChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 999,
-    backgroundColor: theme.surfaceAlt,
-    borderWidth: 1,
-    borderColor: theme.border,
-  },
-  sizeChipSelected: {
-    backgroundColor: theme.accent,
-    borderColor: theme.accent,
-  },
-  sizeChipText: {
-    color: theme.text,
-    fontWeight: "600",
-    fontSize: 13,
-  },
-  sizeChipTextSelected: {
-    color: theme.textOnAccent,
-  },
-  imagePreviewWrap: {
-    marginTop: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: theme.background,
-    borderRadius: 12,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: theme.border,
-  },
-  imagePreview: { width: 54, height: 54, borderRadius: 10 },
-  removeImageBtn: {
-    backgroundColor: "#7f1d1d",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  removeImageText: { color: "#fecaca", fontWeight: "700", fontSize: 12 },
-  modalButtons: { flexDirection: "row", marginTop: 24, gap: 12 },
-  cancelBtn: { flex: 1, padding: 16, borderRadius: 12, backgroundColor: theme.surfaceAlt, alignItems: "center" },
-  cancelText: { color: theme.textMuted, fontWeight: "600", fontSize: 16 },
-  createBtn: { flex: 1, padding: 16, borderRadius: 12, backgroundColor: theme.accent, alignItems: "center" },
-  createText: { color: theme.textOnAccent, fontWeight: "700", fontSize: 16 },
-});
+    container: { flex: 1, backgroundColor: theme.background },
+    list: { padding: 16, paddingBottom: 100 },
+    productCard: {
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      padding: 16,
+      flexDirection: "row",
+      alignItems: "center",
+      marginBottom: 12,
+    },
+    productIcon: {
+      width: 48,
+      height: 48,
+      borderRadius: 12,
+      backgroundColor: theme.surfaceAlt,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    productEmoji: {},
+    productImage: { width: 48, height: 48, borderRadius: 12 },
+    productInfo: { flex: 1, marginLeft: 14 },
+    productTitle: { fontSize: 16, fontWeight: "600", color: theme.text },
+    productPrice: { fontSize: 15, color: theme.textMuted, fontWeight: "700", marginTop: 2 },
+    productMeta: { fontSize: 12, color: theme.textMuted, marginTop: 4 },
+    productHint: { fontSize: 12, color: theme.textMuted, marginTop: 6 },
+    optionsButton: {
+      padding: 4,
+      marginLeft: 8,
+    },
+    empty: { alignItems: "center", marginTop: 100 },
+    emptyEmoji: { marginBottom: 16 },
+    emptyTitle: { fontSize: 20, fontWeight: "700", color: theme.text },
+    emptySubtitle: { fontSize: 15, color: theme.textMuted, marginTop: 4, textAlign: "center" },
+    headerPill: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: theme.accent,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 20,
+      marginRight: 16,
+      gap: 4,
+    },
+    headerPillText: {
+      color: theme.textOnAccent,
+      fontWeight: "700",
+      fontSize: 14,
+    },
+    modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" },
+    modalContent: {
+      backgroundColor: theme.surface,
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      padding: 24,
+      paddingBottom: 40,
+    },
+    formModalContent: {
+      maxHeight: "88%",
+    },
+    formScrollContent: {
+      paddingBottom: 8,
+    },
+    modalTitle: { fontSize: 22, fontWeight: "700", color: theme.text, marginBottom: 12 },
+    actionSummary: {
+      backgroundColor: theme.background,
+      borderRadius: 16,
+      padding: 16,
+      borderWidth: 1,
+      borderColor: theme.border,
+      marginBottom: 18,
+    },
+    actionName: { fontSize: 18, fontWeight: "700", color: theme.text },
+    actionPrice: { fontSize: 15, color: theme.textMuted, fontWeight: "700", marginTop: 6 },
+    actionMeta: { fontSize: 13, color: theme.textMuted, marginTop: 4 },
+    actionButtons: { gap: 12 },
+    actionPrimaryBtn: {
+      backgroundColor: theme.surfaceAlt,
+      borderRadius: 12,
+      paddingVertical: 14,
+      paddingHorizontal: 16,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 10,
+    },
+    actionPrimaryText: { color: theme.text, fontWeight: "700", fontSize: 16 },
+    actionDeleteBtn: { backgroundColor: "#7f1d1d" },
+    actionDeleteText: { color: "#fecaca", fontWeight: "700", fontSize: 16 },
+    actionCancelBtn: {
+      marginTop: 14,
+      paddingVertical: 14,
+      borderRadius: 12,
+      backgroundColor: theme.surfaceAlt,
+      alignItems: "center",
+    },
+    label: { fontSize: 14, fontWeight: "600", color: theme.textMuted, marginBottom: 6, marginTop: 14 },
+    input: {
+      backgroundColor: theme.background,
+      borderRadius: 12,
+      padding: 16,
+      fontSize: 16,
+      color: theme.text,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    imagePickerBtn: {
+      marginTop: 10,
+      backgroundColor: theme.surfaceAlt,
+      borderRadius: 10,
+      paddingVertical: 12,
+      alignItems: "center",
+    },
+    imagePickerBtnText: { color: theme.text, fontWeight: "600", fontSize: 14 },
+    sizeOptions: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 10,
+      marginTop: 10,
+    },
+    sizeChip: {
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderRadius: 999,
+      backgroundColor: theme.surfaceAlt,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    sizeChipSelected: {
+      backgroundColor: theme.accent,
+      borderColor: theme.accent,
+    },
+    sizeChipText: {
+      color: theme.text,
+      fontWeight: "600",
+      fontSize: 13,
+    },
+    sizeChipTextSelected: {
+      color: theme.textOnAccent,
+    },
+    imagePreviewWrap: {
+      marginTop: 10,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      backgroundColor: theme.background,
+      borderRadius: 12,
+      padding: 10,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    imagePreview: { width: 54, height: 54, borderRadius: 10 },
+    removeImageBtn: {
+      backgroundColor: "#7f1d1d",
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    removeImageText: { color: "#fecaca", fontWeight: "700", fontSize: 12 },
+    modalButtons: { flexDirection: "row", marginTop: 24, gap: 12 },
+    cancelBtn: { flex: 1, padding: 16, borderRadius: 12, backgroundColor: theme.surfaceAlt, alignItems: "center" },
+    cancelText: { color: theme.textMuted, fontWeight: "600", fontSize: 16 },
+    createBtn: { flex: 1, padding: 16, borderRadius: 12, backgroundColor: theme.accent, alignItems: "center" },
+    createText: { color: theme.textOnAccent, fontWeight: "700", fontSize: 16 },
+  });

@@ -7,6 +7,8 @@ import {
   addProductToSession,
   removeProductFromSession,
   getSessionAnalytics,
+  generateAiReplySuggestion,
+  generateAiEngagementSummary,
 } from "../controllers/session.controller";
 import { authenticate } from "../middlewares/auth";
 import { rateLimiter } from "../middlewares/rateLimiter";
@@ -33,6 +35,16 @@ router.post(
   "/:id/products",
   rateLimiter(120, 60_000, (req) => req.user?.userId || req.ip || "unknown"),
   addProductToSession
+);
+router.post(
+  "/:id/ai-reply",
+  rateLimiter(20, 60_000, (req) => req.user?.userId || req.ip || "unknown"),
+  generateAiReplySuggestion
+);
+router.post(
+  "/:id/ai-engagement-summary",
+  rateLimiter(10, 60_000, (req) => req.user?.userId || req.ip || "unknown"),
+  generateAiEngagementSummary
 );
 router.delete(
   "/:id/products",

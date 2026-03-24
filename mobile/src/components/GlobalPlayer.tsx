@@ -1,5 +1,5 @@
-import React, { useMemo } from "react";
-import { View, StyleSheet, Dimensions, Platform } from "react-native";
+import React, { useMemo, useState, useEffect } from "react";
+import { View, StyleSheet, Dimensions, Platform, Keyboard } from "react-native";
 import { useSegments } from "expo-router";
 import { usePlayer } from "../contexts/PlayerContext";
 import VideoPlayer from "./VideoPlayer";
@@ -11,6 +11,17 @@ export default function GlobalPlayer() {
   const { activeSession, isMinimized, lkToken, lkUrl } = usePlayer();
   const segments = useSegments();
   const insets = useSafeAreaInsets();
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener("keyboardDidShow", () => setKeyboardVisible(true));
+    const hideSubscription = Keyboard.addListener("keyboardDidHide", () => setKeyboardVisible(false));
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
 
   const isCurrentScreenViewer = segments[0] === "viewer";
 
@@ -23,6 +34,8 @@ export default function GlobalPlayer() {
   // We should only show in "Expanded" mode if we are actually on the viewer screen.
   // Otherwise, if we aren't on the viewer screen but it's not minimized, we should probably minimize it.
   const mode = isCurrentScreenViewer && !isMinimized ? "expanded" : "minimized";
+
+  if (mode === "minimized" && keyboardVisible) return null;
 
   const streamType = (activeSession.streamType as "mock" | "livekit") || "livekit";
 

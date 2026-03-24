@@ -40,7 +40,7 @@ export interface LiveSession {
 
 export interface Message {
   id: string;
-  type: "reaction" | "question";
+  type: "reaction" | "question" | "host_reply";
   content: string;
   createdAt: string;
   sessionId: string;

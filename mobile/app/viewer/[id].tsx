@@ -7,6 +7,7 @@ import {
   StyleSheet,
   FlatList,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   Dimensions,
 } from "react-native";
@@ -144,6 +145,10 @@ export default function ViewerScreen() {
         setMessages((prev) => [msg, ...prev].slice(0, MAX_CHAT_MESSAGES));
       };
 
+      const handleNewHostReply = (msg: Message) => {
+        setMessages((prev) => [msg, ...prev].slice(0, MAX_CHAT_MESSAGES));
+      };
+
       const handleStreamEnded = () => {
         setStreamEnded(true);
         closePlayer();
@@ -171,19 +176,30 @@ export default function ViewerScreen() {
         );
       };
 
+      const handleConnect = () => {
+        socket.emit("join_live", id);
+      };
+
+      socket.on("connect", handleConnect);
       socket.on("viewer_count_update", handleViewerCountUpdate);
       socket.on("new_reaction", handleNewReaction);
       socket.on("new_question", handleNewQuestion);
+      socket.on("new_host_reply", handleNewHostReply);
       socket.on("stream_ended", handleStreamEnded);
       socket.on("stream_started", handleStreamStarted);
       socket.on("product_highlight", handleProductHighlight);
       socket.on("session_products_updated", handleSessionProductsUpdated);
-      socket.emit("join_live", id);
+
+      if (socket.connected) {
+        handleConnect();
+      }
 
       socketCleanupRef.current = () => {
+        socket.off("connect", handleConnect);
         socket.off("viewer_count_update", handleViewerCountUpdate);
         socket.off("new_reaction", handleNewReaction);
         socket.off("new_question", handleNewQuestion);
+        socket.off("new_host_reply", handleNewHostReply);
         socket.off("stream_ended", handleStreamEnded);
         socket.off("stream_started", handleStreamStarted);
         socket.off("product_highlight", handleProductHighlight);
@@ -214,13 +230,17 @@ export default function ViewerScreen() {
     if (!questionText.trim() || !socketRef.current) return;
     socketRef.current.emit("send_question", { sessionId: id, content: questionText.trim() });
     setQuestionText("");
+    Keyboard.dismiss();
   }
 
   const products = session?.sessionProducts?.map((sp) => sp.product) || [];
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
         <View style={styles.topBar}>
           <TouchableOpacity onPress={handleBack} style={styles.backButton}>
             <Ionicons name="arrow-back" size={18} color={theme.textMuted} />
@@ -327,9 +347,21 @@ export default function ViewerScreen() {
             renderItem={({ item }) => (
               <View style={styles.chatMessage}>
                 <Ionicons
-                  name={item.type === "reaction" ? "heart" : "help-circle-outline"}
+                  name={
+                    item.type === "reaction"
+                      ? "heart"
+                      : item.type === "host_reply"
+                      ? "chatbubble-ellipses-outline"
+                      : "help-circle-outline"
+                  }
                   size={16}
-                  color={item.type === "reaction" ? theme.danger : theme.accent}
+                  color={
+                    item.type === "reaction"
+                      ? theme.danger
+                      : item.type === "host_reply"
+                      ? theme.textMuted
+                      : theme.accent
+                  }
                   style={styles.chatBadge}
                 />
                 <Text style={styles.chatSender}>{item.user.name}: </Text>
@@ -518,6 +550,7 @@ const createStyles = (theme: AppTheme) =>
     color: theme.text,
     borderWidth: 1,
     borderColor: theme.border,
+    minHeight: 44,
   },
   sendButton: {
     backgroundColor: theme.accent,

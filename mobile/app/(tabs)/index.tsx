@@ -10,8 +10,9 @@ import {
   TextInput,
   Modal,
   Platform,
+  KeyboardAvoidingView,
 } from "react-native";
-import { useRouter, useFocusEffect } from "expo-router";
+import { useRouter, useFocusEffect, Stack } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { apiClient } from "../../src/api/client";
 import { LiveSession, ApiResponse } from "../../src/types";
@@ -113,6 +114,16 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
+      <Stack.Screen
+        options={{
+          headerRight: () => (
+            <TouchableOpacity style={styles.headerPill} onPress={() => setShowGoLive(true)}>
+              <Ionicons name="add" size={18} color={theme.textOnAccent} />
+              <Text style={styles.headerPillText}>Go Live</Text>
+            </TouchableOpacity>
+          ),
+        }}
+      />
       <FlatList
         data={sessions}
         keyExtractor={(item) => item.id}
@@ -128,35 +139,42 @@ export default function HomeScreen() {
         }
       />
 
-      <TouchableOpacity style={styles.goLiveButton} onPress={() => setShowGoLive(true)}>
-        <Text style={styles.goLiveText}>Go Live</Text>
-      </TouchableOpacity>
-
-      <Modal visible={showGoLive} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Start Live Session</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="Session title..."
-              placeholderTextColor="#64748b"
-              value={sessionTitle}
-              onChangeText={setSessionTitle}
+      <Modal visible={showGoLive} transparent animationType="slide" onRequestClose={() => setShowGoLive(false)}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : Platform.OS === "android" ? "height" : undefined}
+        >
+          <View style={styles.modalOverlay}>
+            <TouchableOpacity 
+              style={StyleSheet.absoluteFill} 
+              activeOpacity={1} 
+              onPress={() => setShowGoLive(false)}
             />
-            <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.modalCancel} onPress={() => setShowGoLive(false)}>
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalConfirm, creating && { opacity: 0.6 }]}
-                onPress={handleGoLive}
-                disabled={creating}
-              >
-                <Text style={styles.modalConfirmText}>{creating ? "Starting..." : "Go Live"}</Text>
-              </TouchableOpacity>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Start Live Session</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="Session title..."
+                placeholderTextColor="#64748b"
+                value={sessionTitle}
+                onChangeText={setSessionTitle}
+                autoFocus={Platform.OS === "web"}
+              />
+              <View style={styles.modalButtons}>
+                <TouchableOpacity style={styles.modalCancel} onPress={() => setShowGoLive(false)}>
+                  <Text style={styles.modalCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalConfirm, creating && { opacity: 0.6 }]}
+                  onPress={handleGoLive}
+                  disabled={creating}
+                >
+                  <Text style={styles.modalConfirmText}>{creating ? "Starting..." : "Go Live"}</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -202,27 +220,21 @@ const createStyles = (theme: AppTheme) =>
   emptyEmoji: { marginBottom: 16 },
   emptyTitle: { fontSize: 20, fontWeight: "700", color: theme.text },
   emptySubtitle: { fontSize: 15, color: theme.textMuted, marginTop: 4 },
-  goLiveButton: {
-    position: "absolute",
-    bottom: 24,
-    left: 24,
-    right: 24,
-    backgroundColor: theme.accent,
-    borderRadius: 16,
-    padding: 18,
+  headerPill: {
+    flexDirection: "row",
     alignItems: "center",
-    ...Platform.select({
-      web: { boxShadow: "0px 4px 8px rgba(46, 108, 221, 0.3)" },
-      default: {
-        shadowColor: theme.accent,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-      },
-    }),
-    elevation: 8,
+    backgroundColor: theme.accent,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    marginRight: 16,
+    gap: 4,
   },
-  goLiveText: { color: theme.textOnAccent, fontSize: 18, fontWeight: "800" },
+  headerPillText: {
+    color: theme.textOnAccent,
+    fontWeight: "700",
+    fontSize: 14,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.7)",

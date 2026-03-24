@@ -19,7 +19,8 @@
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#0f172a"
       },
-      "package": "com.anonymous.zooplive"
+      "package": "com.anonymous.zooplive",
+      "softwareKeyboardLayoutMode": "resize"
     },
     "web": {
       "favicon": "./assets/favicon.png"

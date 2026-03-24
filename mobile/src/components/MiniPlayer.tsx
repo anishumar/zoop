@@ -1,4 +1,5 @@
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Platform } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Platform, Keyboard } from "react-native";
+import { useEffect, useState } from "react";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { usePlayer } from "../contexts/PlayerContext";
@@ -6,17 +7,26 @@ import { usePlayer } from "../contexts/PlayerContext";
 import { useAppTheme, AppTheme } from "../theme";
 
 const { width } = Dimensions.get("window");
-const MINI_PLAYER_WIDTH = 160;
-const MINI_PLAYER_HEIGHT = (MINI_PLAYER_WIDTH * 9) / 16;
 
 export default function MiniPlayer() {
   const { activeSession, isMinimized, lkToken, lkUrl, expandPlayer, closePlayer } = usePlayer();
   const theme = useAppTheme();
   const router = useRouter();
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const styles = createStyles(theme);
 
-  if (!activeSession || !isMinimized) {
-    if (activeSession) console.log("MiniPlayer activeSession exists but isMinimized is false");
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener("keyboardDidShow", () => setKeyboardVisible(true));
+    const hideSubscription = Keyboard.addListener("keyboardDidHide", () => setKeyboardVisible(false));
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
+
+  if (!activeSession || !isMinimized || keyboardVisible) {
+    if (activeSession && !keyboardVisible) console.log("MiniPlayer activeSession exists but isMinimized is false");
     return null;
   }
 

@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { ProductService } from "../services/product.service";
+import { AiService } from "../services/ai.service";
 import { catchAsync } from "../utils/catchAsync";
 import { sendSuccess } from "../utils/ApiResponse";
 import { ApiError } from "../utils/ApiError";
@@ -63,6 +64,24 @@ export const getMyProducts = catchAsync(async (req: Request, res: Response) => {
 export const getProduct = catchAsync(async (req: Request, res: Response) => {
   const product = await ProductService.getById(String(req.params.id));
   sendSuccess(res, product);
+});
+
+export const generateProductAiSummary = catchAsync(async (req: Request, res: Response) => {
+  const product = await ProductService.getById(String(req.params.id));
+
+  if (product.ownerId !== req.user!.userId) {
+    throw new ApiError(403, "Not authorized");
+  }
+
+  const summary = await AiService.generateProductSummary({
+    title: product.title,
+    price: product.price,
+    quantity: product.quantity,
+    sizes: product.sizes,
+    imageUrl: product.imageUrl,
+  });
+
+  sendSuccess(res, summary, "AI product summary generated");
 });
 
 export const updateProduct = catchAsync(async (req: Request, res: Response) => {

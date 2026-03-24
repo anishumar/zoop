@@ -3,6 +3,7 @@ import {
   createProduct,
   getMyProducts,
   getProduct,
+  generateProductAiSummary,
   updateProduct,
   deleteProduct,
   setProductImage,
@@ -16,6 +17,7 @@ router.use(authenticate);
 
 router.post("/", createProduct);
 router.get("/", getMyProducts);
+router.post("/:id/ai-summary", generateProductAiSummary);
 router.get("/:id", getProduct);
 router.put("/:id", updateProduct);
 router.patch("/:id/image", setProductImage);
