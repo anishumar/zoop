@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -14,6 +14,8 @@ import {
 import { useRouter, useFocusEffect } from "expo-router";
 import { apiClient } from "../../src/api/client";
 import { LiveSession, ApiResponse } from "../../src/types";
+import { AppTheme, useAppTheme } from "../../src/theme";
+import { useAuth } from "../../src/contexts/AuthContext";
 
 interface SessionListResponse {
   sessions: LiveSession[];
@@ -28,7 +30,10 @@ export default function HomeScreen() {
   const [showGoLive, setShowGoLive] = useState(false);
   const [sessionTitle, setSessionTitle] = useState("");
   const [creating, setCreating] = useState(false);
+  const theme = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const router = useRouter();
+  const { user } = useAuth();
 
   const fetchSessions = useCallback(async () => {
     try {
@@ -76,7 +81,10 @@ export default function HomeScreen() {
     return (
       <TouchableOpacity
         style={styles.sessionCard}
-        onPress={() => router.push(`/viewer/${item.id}`)}
+        onPress={() => {
+          const isHostSession = item.hostId === user?.id;
+          router.push(isHostSession ? `/host/${item.id}` : `/viewer/${item.id}`);
+        }}
         activeOpacity={0.7}
       >
         <View style={styles.sessionVideoPlaceholder}>
@@ -101,7 +109,7 @@ export default function HomeScreen() {
         keyExtractor={(item) => item.id}
         renderItem={renderSession}
         contentContainerStyle={styles.list}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#6366f1" />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.accent} />}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Text style={styles.emptyEmoji}>📡</Text>
@@ -145,18 +153,19 @@ export default function HomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0f172a" },
+const createStyles = (theme: AppTheme) =>
+  StyleSheet.create({
+  container: { flex: 1, backgroundColor: theme.background },
   list: { padding: 16, paddingBottom: 100 },
   sessionCard: {
-    backgroundColor: "#1e293b",
+    backgroundColor: theme.surface,
     borderRadius: 16,
     marginBottom: 16,
     overflow: "hidden",
   },
   sessionVideoPlaceholder: {
     height: 180,
-    backgroundColor: "#1a1a2e",
+    backgroundColor: theme.surfaceAlt,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -175,25 +184,25 @@ const styles = StyleSheet.create({
   liveText: { color: "#fff", fontWeight: "700", fontSize: 12 },
   placeholderEmoji: { fontSize: 48 },
   sessionInfo: { padding: 14 },
-  sessionTitle: { fontSize: 17, fontWeight: "700", color: "#f8fafc" },
-  sessionHost: { fontSize: 14, color: "#94a3b8", marginTop: 4 },
+  sessionTitle: { fontSize: 17, fontWeight: "700", color: theme.text },
+  sessionHost: { fontSize: 14, color: theme.textMuted, marginTop: 4 },
   empty: { alignItems: "center", marginTop: 100 },
   emptyEmoji: { fontSize: 64, marginBottom: 16 },
-  emptyTitle: { fontSize: 20, fontWeight: "700", color: "#f8fafc" },
-  emptySubtitle: { fontSize: 15, color: "#94a3b8", marginTop: 4 },
+  emptyTitle: { fontSize: 20, fontWeight: "700", color: theme.text },
+  emptySubtitle: { fontSize: 15, color: theme.textMuted, marginTop: 4 },
   goLiveButton: {
     position: "absolute",
     bottom: 24,
     left: 24,
     right: 24,
-    backgroundColor: "#ef4444",
+    backgroundColor: theme.accent,
     borderRadius: 16,
     padding: 18,
     alignItems: "center",
     ...Platform.select({
-      web: { boxShadow: "0px 4px 8px rgba(239, 68, 68, 0.3)" },
+      web: { boxShadow: "0px 4px 8px rgba(46, 108, 221, 0.3)" },
       default: {
-        shadowColor: "#ef4444",
+        shadowColor: theme.accent,
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.3,
         shadowRadius: 8,
@@ -201,44 +210,44 @@ const styles = StyleSheet.create({
     }),
     elevation: 8,
   },
-  goLiveText: { color: "#fff", fontSize: 18, fontWeight: "800" },
+  goLiveText: { color: theme.textOnAccent, fontSize: 18, fontWeight: "800" },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.7)",
     justifyContent: "flex-end",
   },
   modalContent: {
-    backgroundColor: "#1e293b",
+    backgroundColor: theme.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
     paddingBottom: 40,
   },
-  modalTitle: { fontSize: 22, fontWeight: "700", color: "#f8fafc", marginBottom: 20 },
+  modalTitle: { fontSize: 22, fontWeight: "700", color: theme.text, marginBottom: 20 },
   modalInput: {
-    backgroundColor: "#0f172a",
+    backgroundColor: theme.background,
     borderRadius: 12,
     padding: 16,
     fontSize: 16,
-    color: "#f8fafc",
+    color: theme.text,
     borderWidth: 1,
-    borderColor: "#334155",
+    borderColor: theme.border,
   },
   modalButtons: { flexDirection: "row", marginTop: 20, gap: 12 },
   modalCancel: {
     flex: 1,
     padding: 16,
     borderRadius: 12,
-    backgroundColor: "#334155",
+    backgroundColor: theme.surfaceAlt,
     alignItems: "center",
   },
-  modalCancelText: { color: "#94a3b8", fontWeight: "600", fontSize: 16 },
+  modalCancelText: { color: theme.textMuted, fontWeight: "600", fontSize: 16 },
   modalConfirm: {
     flex: 1,
     padding: 16,
     borderRadius: 12,
-    backgroundColor: "#ef4444",
+    backgroundColor: theme.accent,
     alignItems: "center",
   },
-  modalConfirmText: { color: "#fff", fontWeight: "700", fontSize: 16 },
+  modalConfirmText: { color: theme.textOnAccent, fontWeight: "700", fontSize: 16 },
 });

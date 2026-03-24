@@ -4,9 +4,11 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { AuthProvider, useAuth } from "../src/contexts/AuthContext";
 import { ActivityIndicator, View } from "react-native";
+import { useAppTheme } from "../src/theme";
 
 function RootNavigator() {
   const { user, loading } = useAuth();
+  const theme = useAppTheme();
   const segments = useSegments();
   const router = useRouter();
 
@@ -24,8 +26,15 @@ function RootNavigator() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#0f172a" }}>
-        <ActivityIndicator size="large" color="#6366f1" />
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: theme.background,
+        }}
+      >
+        <ActivityIndicator size="large" color={theme.accent} />
       </View>
     );
   }
@@ -34,10 +43,12 @@ function RootNavigator() {
 }
 
 export default function RootLayout() {
+  const theme = useAppTheme();
+
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <StatusBar style="light" />
+        <StatusBar style={theme.mode === "dark" ? "light" : "dark"} />
         <RootNavigator />
       </AuthProvider>
     </SafeAreaProvider>

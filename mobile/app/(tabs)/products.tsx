@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -17,6 +17,7 @@ import * as ImagePicker from "expo-image-picker";
 import { apiClient } from "../../src/api/client";
 import { Product, ApiResponse } from "../../src/types";
 import { uploadProductImage } from "../../src/api/uploads";
+import { AppTheme, useAppTheme } from "../../src/theme";
 
 interface ProductListResponse {
   products: Product[];
@@ -33,6 +34,8 @@ export default function ProductsScreen() {
   const [price, setPrice] = useState("");
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const theme = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [selectedImage, setSelectedImage] = useState<{
     uri: string;
     mimeType: string;
@@ -225,7 +228,7 @@ export default function ProductsScreen() {
         keyExtractor={(item) => item.id}
         renderItem={renderProduct}
         contentContainerStyle={styles.list}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#6366f1" />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.accent} />}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Text style={styles.emptyEmoji}>📦</Text>
@@ -300,11 +303,12 @@ export default function ProductsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0f172a" },
+const createStyles = (theme: AppTheme) =>
+  StyleSheet.create({
+  container: { flex: 1, backgroundColor: theme.background },
   list: { padding: 16, paddingBottom: 100 },
   productCard: {
-    backgroundColor: "#1e293b",
+    backgroundColor: theme.surface,
     borderRadius: 12,
     padding: 16,
     flexDirection: "row",
@@ -315,76 +319,76 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 12,
-    backgroundColor: "#334155",
+    backgroundColor: theme.surfaceAlt,
     justifyContent: "center",
     alignItems: "center",
   },
   productEmoji: { fontSize: 24 },
   productImage: { width: 48, height: 48, borderRadius: 12 },
   productInfo: { flex: 1, marginLeft: 14 },
-  productTitle: { fontSize: 16, fontWeight: "600", color: "#f8fafc" },
-  productPrice: { fontSize: 15, color: "#22c55e", fontWeight: "700", marginTop: 2 },
+  productTitle: { fontSize: 16, fontWeight: "600", color: theme.text },
+  productPrice: { fontSize: 15, color: theme.success, fontWeight: "700", marginTop: 2 },
   deleteButton: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "#334155",
+    backgroundColor: theme.surfaceAlt,
     justifyContent: "center",
     alignItems: "center",
   },
-  deleteText: { color: "#ef4444", fontSize: 16, fontWeight: "700" },
+  deleteText: { color: theme.danger, fontSize: 16, fontWeight: "700" },
   empty: { alignItems: "center", marginTop: 100 },
   emptyEmoji: { fontSize: 64, marginBottom: 16 },
-  emptyTitle: { fontSize: 20, fontWeight: "700", color: "#f8fafc" },
-  emptySubtitle: { fontSize: 15, color: "#94a3b8", marginTop: 4, textAlign: "center" },
+  emptyTitle: { fontSize: 20, fontWeight: "700", color: theme.text },
+  emptySubtitle: { fontSize: 15, color: theme.textMuted, marginTop: 4, textAlign: "center" },
   addButton: {
     position: "absolute",
     bottom: 24,
     left: 24,
     right: 24,
-    backgroundColor: "#6366f1",
+    backgroundColor: theme.accent,
     borderRadius: 16,
     padding: 18,
     alignItems: "center",
   },
-  addButtonText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  addButtonText: { color: theme.textOnAccent, fontSize: 16, fontWeight: "700" },
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" },
   modalContent: {
-    backgroundColor: "#1e293b",
+    backgroundColor: theme.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
     paddingBottom: 40,
   },
-  modalTitle: { fontSize: 22, fontWeight: "700", color: "#f8fafc", marginBottom: 12 },
-  label: { fontSize: 14, fontWeight: "600", color: "#cbd5e1", marginBottom: 6, marginTop: 14 },
+  modalTitle: { fontSize: 22, fontWeight: "700", color: theme.text, marginBottom: 12 },
+  label: { fontSize: 14, fontWeight: "600", color: theme.textMuted, marginBottom: 6, marginTop: 14 },
   input: {
-    backgroundColor: "#0f172a",
+    backgroundColor: theme.background,
     borderRadius: 12,
     padding: 16,
     fontSize: 16,
-    color: "#f8fafc",
+    color: theme.text,
     borderWidth: 1,
-    borderColor: "#334155",
+    borderColor: theme.border,
   },
   imagePickerBtn: {
     marginTop: 10,
-    backgroundColor: "#334155",
+    backgroundColor: theme.surfaceAlt,
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: "center",
   },
-  imagePickerBtnText: { color: "#f8fafc", fontWeight: "600", fontSize: 14 },
+  imagePickerBtnText: { color: theme.text, fontWeight: "600", fontSize: 14 },
   imagePreviewWrap: {
     marginTop: 10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: "#0f172a",
+    backgroundColor: theme.background,
     borderRadius: 12,
     padding: 10,
     borderWidth: 1,
-    borderColor: "#334155",
+    borderColor: theme.border,
   },
   imagePreview: { width: 54, height: 54, borderRadius: 10 },
   removeImageBtn: {
@@ -395,8 +399,8 @@ const styles = StyleSheet.create({
   },
   removeImageText: { color: "#fecaca", fontWeight: "700", fontSize: 12 },
   modalButtons: { flexDirection: "row", marginTop: 24, gap: 12 },
-  cancelBtn: { flex: 1, padding: 16, borderRadius: 12, backgroundColor: "#334155", alignItems: "center" },
-  cancelText: { color: "#94a3b8", fontWeight: "600", fontSize: 16 },
-  createBtn: { flex: 1, padding: 16, borderRadius: 12, backgroundColor: "#6366f1", alignItems: "center" },
-  createText: { color: "#fff", fontWeight: "700", fontSize: 16 },
+  cancelBtn: { flex: 1, padding: 16, borderRadius: 12, backgroundColor: theme.surfaceAlt, alignItems: "center" },
+  cancelText: { color: theme.textMuted, fontWeight: "600", fontSize: 16 },
+  createBtn: { flex: 1, padding: 16, borderRadius: 12, backgroundColor: theme.accent, alignItems: "center" },
+  createText: { color: theme.textOnAccent, fontWeight: "700", fontSize: 16 },
 });

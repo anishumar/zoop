@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useAuth } from "../../src/contexts/AuthContext";
+import { AppTheme, useAppTheme } from "../../src/theme";
 
 export default function SignupScreen() {
   const [name, setName] = useState("");
@@ -20,6 +21,8 @@ export default function SignupScreen() {
   const [loading, setLoading] = useState(false);
   const { signup } = useAuth();
   const router = useRouter();
+  const theme = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
 
   async function handleSignup() {
     if (!name.trim() || !email.trim() || !password.trim()) {
@@ -97,34 +100,35 @@ export default function SignupScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0f172a" },
+const createStyles = (theme: AppTheme) =>
+  StyleSheet.create({
+  container: { flex: 1, backgroundColor: theme.background },
   scroll: { flexGrow: 1, justifyContent: "center", padding: 24 },
   header: { marginBottom: 40 },
-  brand: { fontSize: 42, fontWeight: "800", color: "#6366f1", marginBottom: 8 },
-  title: { fontSize: 28, fontWeight: "700", color: "#f8fafc" },
-  subtitle: { fontSize: 16, color: "#94a3b8", marginTop: 4 },
+  brand: { fontSize: 42, fontWeight: "800", color: theme.accent, marginBottom: 8 },
+  title: { fontSize: 28, fontWeight: "700", color: theme.text },
+  subtitle: { fontSize: 16, color: theme.textMuted, marginTop: 4 },
   form: {},
-  label: { fontSize: 14, fontWeight: "600", color: "#cbd5e1", marginBottom: 6, marginTop: 16 },
+  label: { fontSize: 14, fontWeight: "600", color: theme.textMuted, marginBottom: 6, marginTop: 16 },
   input: {
-    backgroundColor: "#1e293b",
+    backgroundColor: theme.surface,
     borderRadius: 12,
     padding: 16,
     fontSize: 16,
-    color: "#f8fafc",
+    color: theme.text,
     borderWidth: 1,
-    borderColor: "#334155",
+    borderColor: theme.border,
   },
   button: {
-    backgroundColor: "#6366f1",
+    backgroundColor: theme.accent,
     borderRadius: 12,
     padding: 16,
     alignItems: "center",
     marginTop: 28,
   },
   buttonDisabled: { opacity: 0.6 },
-  buttonText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  buttonText: { color: theme.textOnAccent, fontSize: 16, fontWeight: "700" },
   linkContainer: { marginTop: 20, alignItems: "center" },
-  linkText: { color: "#94a3b8", fontSize: 14 },
-  linkBold: { color: "#6366f1", fontWeight: "700" },
+  linkText: { color: theme.textMuted, fontSize: 14 },
+  linkBold: { color: theme.accent, fontWeight: "700" },
 });

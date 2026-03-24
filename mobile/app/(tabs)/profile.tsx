@@ -1,8 +1,12 @@
+import { useMemo } from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { useAuth } from "../../src/contexts/AuthContext";
+import { AppTheme, useAppTheme } from "../../src/theme";
 
 export default function ProfileScreen() {
   const { user, logout } = useAuth();
+  const theme = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
 
   return (
     <View style={styles.container}>
@@ -34,22 +38,23 @@ export default function ProfileScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0f172a", alignItems: "center", paddingTop: 40 },
+const createStyles = (theme: AppTheme) =>
+  StyleSheet.create({
+  container: { flex: 1, backgroundColor: theme.background, alignItems: "center", paddingTop: 40 },
   avatar: {
     width: 88,
     height: 88,
     borderRadius: 44,
-    backgroundColor: "#6366f1",
+    backgroundColor: theme.accent,
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 16,
   },
-  avatarText: { fontSize: 36, fontWeight: "800", color: "#fff" },
-  name: { fontSize: 24, fontWeight: "700", color: "#f8fafc" },
-  email: { fontSize: 15, color: "#94a3b8", marginTop: 4 },
+  avatarText: { fontSize: 36, fontWeight: "800", color: theme.textOnAccent },
+  name: { fontSize: 24, fontWeight: "700", color: theme.text },
+  email: { fontSize: 15, color: theme.textMuted, marginTop: 4 },
   card: {
-    backgroundColor: "#1e293b",
+    backgroundColor: theme.surface,
     borderRadius: 16,
     marginTop: 32,
     marginHorizontal: 24,
@@ -57,17 +62,17 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   cardRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 8 },
-  cardLabel: { fontSize: 14, color: "#94a3b8" },
-  cardValue: { fontSize: 14, color: "#f8fafc", fontWeight: "500", maxWidth: "60%", textAlign: "right" },
-  divider: { height: 1, backgroundColor: "#334155", marginVertical: 4 },
+  cardLabel: { fontSize: 14, color: theme.textMuted },
+  cardValue: { fontSize: 14, color: theme.text, fontWeight: "500", maxWidth: "60%", textAlign: "right" },
+  divider: { height: 1, backgroundColor: theme.border, marginVertical: 4 },
   logoutButton: {
     marginTop: 40,
-    backgroundColor: "#1e293b",
+    backgroundColor: theme.surface,
     borderRadius: 12,
     paddingVertical: 16,
     paddingHorizontal: 48,
     borderWidth: 1,
-    borderColor: "#ef4444",
+    borderColor: theme.danger,
   },
-  logoutText: { color: "#ef4444", fontSize: 16, fontWeight: "700" },
+  logoutText: { color: theme.danger, fontSize: 16, fontWeight: "700" },
 });

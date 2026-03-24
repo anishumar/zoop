@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import { apiClient } from "../../src/api/client";
 import { connectSocket, disconnectSocket } from "../../src/api/socket";
 import VideoPlayer from "../../src/components/VideoPlayer";
 import { LiveSession, Message, ApiResponse } from "../../src/types";
+import { AppTheme, useAppTheme } from "../../src/theme";
 
 const REACTIONS = ["❤️", "🔥", "👏", "😍", "🎉", "💰"];
 
@@ -31,6 +32,16 @@ export default function ViewerScreen() {
   const [showProducts, setShowProducts] = useState(false);
   const [floatingReactions, setFloatingReactions] = useState<{ id: number; emoji: string }[]>([]);
   const reactionIdRef = useRef(0);
+  const theme = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
+  function handleBack() {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace("/(tabs)");
+  }
 
   useEffect(() => {
     loadSession();
@@ -86,7 +97,6 @@ export default function ViewerScreen() {
   function sendReaction(emoji: string) {
     if (socketRef.current) {
       socketRef.current.emit("send_reaction", { sessionId: id, content: emoji });
-      showFloatingReaction(emoji);
     }
   }
 
@@ -102,7 +112,7 @@ export default function ViewerScreen() {
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <View style={styles.topBar}>
-          <TouchableOpacity onPress={() => router.back()}>
+          <TouchableOpacity onPress={handleBack}>
             <Text style={styles.backText}>← Back</Text>
           </TouchableOpacity>
           <View style={styles.viewerBadge}>
@@ -194,8 +204,9 @@ export default function ViewerScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0f172a" },
+const createStyles = (theme: AppTheme) =>
+  StyleSheet.create({
+  container: { flex: 1, backgroundColor: theme.background },
   topBar: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -203,17 +214,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
   },
-  backText: { color: "#94a3b8", fontSize: 16, fontWeight: "600" },
+  backText: { color: theme.textMuted, fontSize: 16, fontWeight: "600" },
   viewerBadge: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#1e293b",
+    backgroundColor: theme.surface,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
   },
   viewerIcon: { fontSize: 14, marginRight: 4 },
-  viewerCountText: { color: "#f8fafc", fontWeight: "700", fontSize: 14 },
+  viewerCountText: { color: theme.text, fontWeight: "700", fontSize: 14 },
   videoContainer: { marginHorizontal: 16, position: "relative" },
   floatingReactions: {
     position: "absolute",
@@ -223,13 +234,13 @@ const styles = StyleSheet.create({
   },
   floatingEmoji: { fontSize: 28, marginBottom: 4 },
   sessionMeta: { paddingHorizontal: 16, paddingTop: 12 },
-  sessionTitle: { fontSize: 18, fontWeight: "700", color: "#f8fafc" },
-  hostName: { fontSize: 14, color: "#94a3b8", marginTop: 2 },
+  sessionTitle: { fontSize: 18, fontWeight: "700", color: theme.text },
+  hostName: { fontSize: 14, color: theme.textMuted, marginTop: 2 },
   productsToggle: { paddingHorizontal: 16, paddingTop: 12 },
-  productsToggleText: { color: "#6366f1", fontWeight: "700", fontSize: 14 },
+  productsToggleText: { color: theme.accent, fontWeight: "700", fontSize: 14 },
   productsList: { paddingHorizontal: 16, paddingTop: 8 },
   productCard: {
-    backgroundColor: "#1e293b",
+    backgroundColor: theme.surface,
     borderRadius: 12,
     padding: 14,
     marginRight: 12,
@@ -237,20 +248,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   productEmoji: { fontSize: 28, marginBottom: 6 },
-  productTitle: { fontSize: 13, fontWeight: "600", color: "#f8fafc", textAlign: "center" },
-  productPrice: { fontSize: 14, color: "#22c55e", fontWeight: "700", marginTop: 4 },
+  productTitle: { fontSize: 13, fontWeight: "600", color: theme.text, textAlign: "center" },
+  productPrice: { fontSize: 14, color: theme.success, fontWeight: "700", marginTop: 4 },
   chatSection: { flex: 1, marginTop: 8 },
   chatList: { paddingHorizontal: 16 },
   chatMessage: { flexDirection: "row", flexWrap: "wrap", marginBottom: 6 },
   chatBadge: { fontSize: 14, marginRight: 4 },
-  chatSender: { fontSize: 13, fontWeight: "700", color: "#6366f1" },
-  chatText: { fontSize: 13, color: "#e2e8f0" },
+  chatSender: { fontSize: 13, fontWeight: "700", color: theme.accent },
+  chatText: { fontSize: 13, color: theme.text },
   reactionBar: {
     flexDirection: "row",
     justifyContent: "space-around",
     paddingVertical: 8,
     paddingHorizontal: 16,
-    backgroundColor: "#1e293b",
+    backgroundColor: theme.surface,
     marginHorizontal: 16,
     borderRadius: 12,
   },
@@ -264,20 +275,20 @@ const styles = StyleSheet.create({
   },
   questionInput: {
     flex: 1,
-    backgroundColor: "#1e293b",
+    backgroundColor: theme.surface,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
     fontSize: 15,
-    color: "#f8fafc",
+    color: theme.text,
     borderWidth: 1,
-    borderColor: "#334155",
+    borderColor: theme.border,
   },
   sendButton: {
-    backgroundColor: "#6366f1",
+    backgroundColor: theme.accent,
     borderRadius: 12,
     paddingHorizontal: 20,
     justifyContent: "center",
   },
-  sendText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+  sendText: { color: theme.textOnAccent, fontWeight: "700", fontSize: 15 },
 });
