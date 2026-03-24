@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Image,
+  Dimensions,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -16,10 +17,12 @@ import { Socket } from "socket.io-client";
 import { apiClient } from "../../src/api/client";
 import { connectSocket, disconnectSocket } from "../../src/api/socket";
 import { getLiveKitToken } from "../../src/api/livekit";
-import VideoPlayer from "../../src/components/VideoPlayer";
+// Removed VideoPlayer import to use GlobalPlayer singleton
 import { LiveSession, Message, ApiResponse } from "../../src/types";
 import { AppTheme, useAppTheme } from "../../src/theme";
+import { usePlayer } from "../../src/contexts/PlayerContext";
 
+const { width } = Dimensions.get("window");
 const REACTIONS = ["❤️", "🔥", "👏", "😍", "🎉", "💰"];
 
 export default function ViewerScreen() {
@@ -43,8 +46,22 @@ export default function ViewerScreen() {
 
   const theme = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
+  const { openPlayer, minimizePlayer, activeSession: playerActiveSession, closePlayer, isMinimized } = usePlayer();
+
+  const isMinimizing = useRef(false);
 
   function handleBack() {
+    console.log("handleBack called, session:", session?.id, "streamEnded:", streamEnded);
+    // If we have a session and it hasn't ended, we minimize
+    if (session && !streamEnded) {
+      console.log("Minimizing player...");
+      isMinimizing.current = true;
+      openPlayer(session, lkToken, lkUrl, true);
+    } else {
+      console.log("Closing player...");
+      closePlayer();
+    }
+
     if (router.canGoBack()) {
       router.back();
       return;
@@ -58,12 +75,14 @@ export default function ViewerScreen() {
     fetchLiveKitToken();
 
     return () => {
-      if (socketRef.current && id) {
-        socketRef.current.emit("leave_live", id);
+      if (!isMinimizing.current) {
+        if (socketRef.current && id) {
+          socketRef.current.emit("leave_live", id);
+        }
+        disconnectSocket();
       }
-      disconnectSocket();
     };
-  }, [id]);
+  }, [id]); // Only run on ID change
 
   async function fetchLiveKitToken() {
     if (!id) return;
@@ -71,6 +90,9 @@ export default function ViewerScreen() {
       const data = await getLiveKitToken(id as string);
       setLkToken(data.token);
       setLkUrl(data.url);
+      if (session && !isMinimizing.current) {
+        openPlayer(session, data.token, data.url);
+      }
     } catch (err: any) {
       console.error("Failed to get LiveKit token:", err.message);
     }
@@ -80,6 +102,9 @@ export default function ViewerScreen() {
     try {
       const res = await apiClient<ApiResponse<LiveSession>>(`/sessions/${id}`);
       setSession(res.data);
+      if (lkToken && !isMinimizing.current) {
+        openPlayer(res.data, lkToken, lkUrl);
+      }
     } catch {}
   }
 
@@ -173,23 +198,17 @@ export default function ViewerScreen() {
         </View>
 
         <View style={styles.videoContainer}>
-          {streamEnded ? (
+          {streamEnded && (
             <View style={styles.endedOverlay}>
               <Text style={styles.endedText}>Stream has ended</Text>
               <TouchableOpacity style={styles.goBackButton} onPress={handleBack}>
                 <Text style={styles.goBackText}>Go Back</Text>
               </TouchableOpacity>
             </View>
-          ) : (
-            <VideoPlayer
-              streamType={streamType}
-              streamUrl={session?.streamUrl}
-              livekitToken={lkToken}
-              livekitUrl={lkUrl}
-              isHost={false}
-              onConnectionChange={handleConnectionChange}
-              onParticipantCountChange={handleParticipantCount}
-            />
+          )}
+
+          {!streamEnded && (
+            <View style={styles.placeholderBox} />
           )}
 
           <View style={styles.floatingReactions}>
@@ -327,7 +346,16 @@ const createStyles = (theme: AppTheme) =>
   },
   viewerIcon: { fontSize: 14, marginRight: 4 },
   viewerCountText: { color: theme.text, fontWeight: "700", fontSize: 14 },
-  videoContainer: { marginHorizontal: 16, position: "relative" },
+  videoContainer: {
+    marginHorizontal: 16,
+    position: "relative",
+    width: width - 32,
+    aspectRatio: 16 / 9,
+  },
+  placeholderBox: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "transparent",
+  },
   endedOverlay: {
     width: "100%",
     aspectRatio: 16 / 9,

@@ -5,6 +5,9 @@ import { StatusBar } from "expo-status-bar";
 import { AuthProvider, useAuth } from "../src/contexts/AuthContext";
 import { ActivityIndicator, View } from "react-native";
 import { useAppTheme } from "../src/theme";
+import { PlayerProvider } from "../src/contexts/PlayerContext";
+import MiniPlayer from "../src/components/MiniPlayer";
+import GlobalPlayer from "../src/components/GlobalPlayer";
 
 function RootNavigator() {
   const { user, loading } = useAuth();
@@ -39,7 +42,13 @@ function RootNavigator() {
     );
   }
 
-  return <Slot />;
+  return (
+    <>
+      <Slot />
+      <MiniPlayer />
+      <GlobalPlayer />
+    </>
+  );
 }
 
 export default function RootLayout() {
@@ -48,8 +57,10 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <StatusBar style={theme.mode === "dark" ? "light" : "dark"} />
-        <RootNavigator />
+        <PlayerProvider>
+          <StatusBar style={theme.mode === "dark" ? "light" : "dark"} />
+          <RootNavigator />
+        </PlayerProvider>
       </AuthProvider>
     </SafeAreaProvider>
   );

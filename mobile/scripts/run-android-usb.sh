@@ -50,8 +50,7 @@ if [ "${DEVICE_COUNT}" -lt 1 ]; then
   exit 1
 fi
 
-echo "Configuring adb reverse for API and Metro..."
-adb reverse "tcp:${API_PORT}" "tcp:${API_PORT}"
+echo "Configuring adb reverse for Metro..."
 adb reverse "tcp:${PORT}" "tcp:${PORT}"
 adb reverse --list
 
