@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { useFocusEffect } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
+import { Ionicons } from "@expo/vector-icons";
 import { apiClient } from "../../src/api/client";
 import { Product, ApiResponse } from "../../src/types";
 import { uploadProductImage } from "../../src/api/uploads";
@@ -27,12 +28,18 @@ interface ProductListResponse {
   totalPages: number;
 }
 
+const PRODUCT_SIZE_OPTIONS = ["S", "M", "L", "XL", "Free Size"] as const;
+
 export default function ProductsScreen() {
   const [products, setProducts] = useState<Product[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [actionProduct, setActionProduct] = useState<Product | null>(null);
   const [title, setTitle] = useState("");
   const [price, setPrice] = useState("");
+  const [quantity, setQuantity] = useState("1");
+  const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const theme = useAppTheme();
@@ -67,8 +74,8 @@ export default function ProductsScreen() {
   }
 
   async function handleCreate() {
-    if (!title.trim() || !price.trim()) {
-      Alert.alert("Error", "Title and price are required");
+    if (!title.trim() || !price.trim() || !quantity.trim()) {
+      Alert.alert("Error", "Title, price and quantity are required");
       return;
     }
     const priceNum = parseFloat(price);
@@ -76,12 +83,21 @@ export default function ProductsScreen() {
       Alert.alert("Error", "Enter a valid price");
       return;
     }
+    const quantityNum = parseInt(quantity, 10);
+    if (!Number.isInteger(quantityNum) || quantityNum < 0) {
+      Alert.alert("Error", "Enter a valid quantity");
+      return;
+    }
+    if (selectedSizes.length === 0) {
+      Alert.alert("Error", "Select at least one size");
+      return;
+    }
 
     setCreating(true);
     try {
       const createRes = await apiClient<ApiResponse<Product>>("/products", {
         method: "POST",
-        body: { title: title.trim(), price: priceNum },
+        body: { title: title.trim(), price: priceNum, quantity: quantityNum, sizes: selectedSizes },
       });
 
       if (selectedImage) {
@@ -101,6 +117,8 @@ export default function ProductsScreen() {
       setShowCreate(false);
       setTitle("");
       setPrice("");
+      setQuantity("1");
+      setSelectedSizes([]);
       setSelectedImage(null);
       fetchProducts();
     } catch (err: any) {
@@ -108,6 +126,97 @@ export default function ProductsScreen() {
     } finally {
       setCreating(false);
     }
+  }
+
+  function resetForm() {
+    setShowCreate(false);
+    setEditingProduct(null);
+    setTitle("");
+    setPrice("");
+    setQuantity("1");
+    setSelectedSizes([]);
+    setSelectedImage(null);
+  }
+
+  function openCreateModal() {
+    setEditingProduct(null);
+    setTitle("");
+    setPrice("");
+    setQuantity("1");
+    setSelectedSizes([]);
+    setSelectedImage(null);
+    setShowCreate(true);
+  }
+
+  function openEditModal(product: Product) {
+    setEditingProduct(product);
+    setTitle(product.title);
+    setPrice(String(product.price));
+    setQuantity(String(product.quantity));
+    setSelectedSizes(product.sizes ?? []);
+    setSelectedImage(null);
+    setShowCreate(true);
+  }
+
+  async function handleSubmitProduct() {
+    if (!title.trim() || !price.trim() || !quantity.trim()) {
+      Alert.alert("Error", "Title, price and quantity are required");
+      return;
+    }
+    const priceNum = parseFloat(price);
+    if (isNaN(priceNum) || priceNum <= 0) {
+      Alert.alert("Error", "Enter a valid price");
+      return;
+    }
+    const quantityNum = parseInt(quantity, 10);
+    if (!Number.isInteger(quantityNum) || quantityNum < 0) {
+      Alert.alert("Error", "Enter a valid quantity");
+      return;
+    }
+    if (selectedSizes.length === 0) {
+      Alert.alert("Error", "Select at least one size");
+      return;
+    }
+
+    setCreating(true);
+    try {
+      const productRes = editingProduct
+        ? await apiClient<ApiResponse<Product>>(`/products/${editingProduct.id}`, {
+            method: "PUT",
+            body: { title: title.trim(), price: priceNum, quantity: quantityNum, sizes: selectedSizes },
+          })
+        : await apiClient<ApiResponse<Product>>("/products", {
+            method: "POST",
+            body: { title: title.trim(), price: priceNum, quantity: quantityNum, sizes: selectedSizes },
+          });
+
+      if (selectedImage) {
+        const uploaded = await uploadProductImage(selectedImage);
+        await apiClient(`/products/${productRes.data.id}/image`, {
+          method: "PATCH",
+          body: {
+            ...uploaded,
+            imageMimeType: selectedImage.mimeType,
+            imageSize: selectedImage.fileSize,
+            imageWidth: selectedImage.width,
+            imageHeight: selectedImage.height,
+          },
+        });
+      }
+
+      resetForm();
+      fetchProducts();
+    } catch (err: any) {
+      Alert.alert("Error", err.message);
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  function toggleSize(size: string) {
+    setSelectedSizes((current) =>
+      current.includes(size) ? current.filter((item) => item !== size) : [...current, size]
+    );
   }
 
   async function openGallery() {
@@ -171,53 +280,68 @@ export default function ProductsScreen() {
   }
 
   async function handleDelete(id: string) {
-    const deleteProduct = async () => {
-      try {
-        setDeletingId(id);
-        await apiClient(`/products/${id}`, { method: "DELETE" });
-        fetchProducts();
-      } catch (err: any) {
-        Alert.alert("Error", err.message);
-      } finally {
-        setDeletingId(null);
-      }
-    };
-
-    if (Platform.OS === "web") {
-      const confirmed = window.confirm("Are you sure you want to delete this product?");
-      if (confirmed) {
-        await deleteProduct();
-      }
-      return;
+    try {
+      setDeletingId(id);
+      await apiClient(`/products/${id}`, { method: "DELETE" });
+      fetchProducts();
+    } catch (err: any) {
+      Alert.alert("Error", err.message);
+    } finally {
+      setDeletingId(null);
     }
+  }
 
-    Alert.alert("Delete Product", "Are you sure?", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: deleteProduct },
-    ]);
+  function handleProductOptions(product: Product) {
+    if (deletingId || creating) return;
+    setActionProduct(product);
+  }
+
+  function handleEditSelectedProduct() {
+    if (!actionProduct) return;
+    const product = actionProduct;
+    setActionProduct(null);
+    openEditModal(product);
+  }
+
+  async function handleDeleteSelectedProduct() {
+    if (!actionProduct) return;
+    const productId = actionProduct.id;
+    setActionProduct(null);
+    await handleDelete(productId);
   }
 
   function renderProduct({ item }: { item: Product }) {
     return (
-      <View style={styles.productCard}>
+      <View style={[styles.productCard, deletingId === item.id && { opacity: 0.6 }]}>
         <View style={styles.productIcon}>
           <ImageWithFallback
             uri={item.imageUrl}
             style={styles.productImage}
-            fallbackText="📦"
-            fallbackStyle={styles.productEmoji}
+            fallback={
+              <Ionicons
+                name="cube-outline"
+                size={24}
+                color={theme.textMuted}
+                style={styles.productEmoji}
+              />
+            }
           />
         </View>
         <View style={styles.productInfo}>
           <Text style={styles.productTitle} numberOfLines={1}>{item.title}</Text>
-          <Text style={styles.productPrice}>${item.price.toFixed(2)}</Text>
+          <Text style={styles.productPrice}>₹{item.price.toFixed(2)}</Text>
+          <Text style={styles.productMeta}>Qty: {item.quantity}</Text>
+          <Text style={styles.productMeta}>Sizes: {item.sizes?.join(", ") || "Not set"}</Text>
+          <Text style={styles.productHint}>
+            {deletingId === item.id ? "Deleting..." : "Tap the menu for options"}
+          </Text>
         </View>
         <TouchableOpacity
-          style={[styles.deleteButton, deletingId === item.id && { opacity: 0.6 }]}
-          onPress={() => handleDelete(item.id)}
+          style={styles.optionsButton}
+          onPress={() => handleProductOptions(item)}
           disabled={deletingId === item.id}
         >
-          <Text style={styles.deleteText}>{deletingId === item.id ? "…" : "✕"}</Text>
+          <Ionicons name="ellipsis-horizontal-circle-outline" size={22} color={theme.textMuted} />
         </TouchableOpacity>
       </View>
     );
@@ -233,21 +357,21 @@ export default function ProductsScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.accent} />}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyEmoji}>📦</Text>
+            <Ionicons name="cube-outline" size={56} color={theme.textMuted} style={styles.emptyEmoji} />
             <Text style={styles.emptyTitle}>No products yet</Text>
             <Text style={styles.emptySubtitle}>Add products to showcase in live sessions</Text>
           </View>
         }
       />
 
-      <TouchableOpacity style={styles.addButton} onPress={() => setShowCreate(true)}>
+      <TouchableOpacity style={styles.addButton} onPress={openCreateModal}>
         <Text style={styles.addButtonText}>+ Add Product</Text>
       </TouchableOpacity>
 
       <Modal visible={showCreate} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>New Product</Text>
+            <Text style={styles.modalTitle}>{editingProduct ? "Edit Product" : "New Product"}</Text>
 
             <Text style={styles.label}>Name</Text>
             <TextInput
@@ -268,6 +392,34 @@ export default function ProductsScreen() {
               keyboardType="decimal-pad"
             />
 
+            <Text style={styles.label}>Quantity</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="0"
+              placeholderTextColor="#64748b"
+              value={quantity}
+              onChangeText={setQuantity}
+              keyboardType="number-pad"
+            />
+
+            <Text style={styles.label}>Sizes</Text>
+            <View style={styles.sizeOptions}>
+              {PRODUCT_SIZE_OPTIONS.map((size) => {
+                const isSelected = selectedSizes.includes(size);
+                return (
+                  <TouchableOpacity
+                    key={size}
+                    style={[styles.sizeChip, isSelected && styles.sizeChipSelected]}
+                    onPress={() => toggleSize(size)}
+                  >
+                    <Text style={[styles.sizeChipText, isSelected && styles.sizeChipTextSelected]}>
+                      {size}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
             <Text style={styles.label}>Product Image</Text>
             <TouchableOpacity style={styles.imagePickerBtn} onPress={handlePickImage}>
               <Text style={styles.imagePickerBtnText}>
@@ -286,18 +438,69 @@ export default function ProductsScreen() {
             <View style={styles.modalButtons}>
               <TouchableOpacity
                 style={styles.cancelBtn}
-                onPress={() => { setShowCreate(false); setTitle(""); setPrice(""); setSelectedImage(null); }}
+                onPress={resetForm}
               >
                 <Text style={styles.cancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.createBtn, creating && { opacity: 0.6 }]}
-                onPress={handleCreate}
+                onPress={handleSubmitProduct}
                 disabled={creating}
               >
-                <Text style={styles.createText}>{creating ? "Adding..." : "Add Product"}</Text>
+                <Text style={styles.createText}>
+                  {creating ? (editingProduct ? "Saving..." : "Adding...") : editingProduct ? "Save Changes" : "Add Product"}
+                </Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={Boolean(actionProduct)}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setActionProduct(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            {actionProduct && (
+              <View style={styles.actionSummary}>
+                <Text style={styles.actionName} numberOfLines={1}>
+                  {actionProduct.title}
+                </Text>
+                <Text style={styles.actionPrice}>₹{actionProduct.price.toFixed(2)}</Text>
+                <Text style={styles.actionMeta}>Qty: {actionProduct.quantity}</Text>
+                <Text style={styles.actionMeta}>
+                  Sizes: {actionProduct.sizes?.join(", ") || "Not set"}
+                </Text>
+              </View>
+            )}
+
+            <View style={styles.actionButtons}>
+              <TouchableOpacity style={styles.actionPrimaryBtn} onPress={handleEditSelectedProduct}>
+                <Ionicons name="create-outline" size={18} color={theme.text} />
+                <Text style={styles.actionPrimaryText}>Edit</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.actionPrimaryBtn,
+                  styles.actionDeleteBtn,
+                  actionProduct && deletingId === actionProduct.id && { opacity: 0.6 },
+                ]}
+                onPress={() => void handleDeleteSelectedProduct()}
+                disabled={Boolean(actionProduct && deletingId === actionProduct.id)}
+              >
+                <Ionicons name="trash-outline" size={18} color="#fecaca" />
+                <Text style={styles.actionDeleteText}>
+                  {actionProduct && deletingId === actionProduct.id ? "Deleting..." : "Delete"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity style={styles.actionCancelBtn} onPress={() => setActionProduct(null)}>
+              <Text style={styles.cancelText}>Cancel</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -325,22 +528,19 @@ const createStyles = (theme: AppTheme) =>
     justifyContent: "center",
     alignItems: "center",
   },
-  productEmoji: { fontSize: 24 },
+  productEmoji: {},
   productImage: { width: 48, height: 48, borderRadius: 12 },
   productInfo: { flex: 1, marginLeft: 14 },
   productTitle: { fontSize: 16, fontWeight: "600", color: theme.text },
-  productPrice: { fontSize: 15, color: theme.success, fontWeight: "700", marginTop: 2 },
-  deleteButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: theme.surfaceAlt,
-    justifyContent: "center",
-    alignItems: "center",
+  productPrice: { fontSize: 15, color: theme.textMuted, fontWeight: "700", marginTop: 2 },
+  productMeta: { fontSize: 12, color: theme.textMuted, marginTop: 4 },
+  productHint: { fontSize: 12, color: theme.textMuted, marginTop: 6 },
+  optionsButton: {
+    padding: 4,
+    marginLeft: 8,
   },
-  deleteText: { color: theme.danger, fontSize: 16, fontWeight: "700" },
   empty: { alignItems: "center", marginTop: 100 },
-  emptyEmoji: { fontSize: 64, marginBottom: 16 },
+  emptyEmoji: { marginBottom: 16 },
   emptyTitle: { fontSize: 20, fontWeight: "700", color: theme.text },
   emptySubtitle: { fontSize: 15, color: theme.textMuted, marginTop: 4, textAlign: "center" },
   addButton: {
@@ -363,6 +563,38 @@ const createStyles = (theme: AppTheme) =>
     paddingBottom: 40,
   },
   modalTitle: { fontSize: 22, fontWeight: "700", color: theme.text, marginBottom: 12 },
+  actionSummary: {
+    backgroundColor: theme.background,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: theme.border,
+    marginBottom: 18,
+  },
+  actionName: { fontSize: 18, fontWeight: "700", color: theme.text },
+  actionPrice: { fontSize: 15, color: theme.textMuted, fontWeight: "700", marginTop: 6 },
+  actionMeta: { fontSize: 13, color: theme.textMuted, marginTop: 4 },
+  actionButtons: { gap: 12 },
+  actionPrimaryBtn: {
+    backgroundColor: theme.surfaceAlt,
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
+  actionPrimaryText: { color: theme.text, fontWeight: "700", fontSize: 16 },
+  actionDeleteBtn: { backgroundColor: "#7f1d1d" },
+  actionDeleteText: { color: "#fecaca", fontWeight: "700", fontSize: 16 },
+  actionCancelBtn: {
+    marginTop: 14,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: theme.surfaceAlt,
+    alignItems: "center",
+  },
   label: { fontSize: 14, fontWeight: "600", color: theme.textMuted, marginBottom: 6, marginTop: 14 },
   input: {
     backgroundColor: theme.background,
@@ -381,6 +613,32 @@ const createStyles = (theme: AppTheme) =>
     alignItems: "center",
   },
   imagePickerBtnText: { color: theme.text, fontWeight: "600", fontSize: 14 },
+  sizeOptions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginTop: 10,
+  },
+  sizeChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: theme.surfaceAlt,
+    borderWidth: 1,
+    borderColor: theme.border,
+  },
+  sizeChipSelected: {
+    backgroundColor: theme.accent,
+    borderColor: theme.accent,
+  },
+  sizeChipText: {
+    color: theme.text,
+    fontWeight: "600",
+    fontSize: 13,
+  },
+  sizeChipTextSelected: {
+    color: theme.textOnAccent,
+  },
   imagePreviewWrap: {
     marginTop: 10,
     flexDirection: "row",

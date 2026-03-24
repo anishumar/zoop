@@ -12,6 +12,7 @@ import {
   Platform,
 } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { apiClient } from "../../src/api/client";
 import { LiveSession, ApiResponse } from "../../src/types";
 import { AppTheme, useAppTheme } from "../../src/theme";
@@ -92,14 +93,17 @@ export default function HomeScreen() {
             <View style={styles.liveDot} />
             <Text style={styles.liveText}>LIVE</Text>
           </View>
-          <Text style={styles.placeholderEmoji}>🎬</Text>
+          <Ionicons name="videocam" size={48} color={theme.textMuted} />
         </View>
         <View style={styles.sessionInfo}>
           <Text style={styles.sessionTitle} numberOfLines={1}>{item.title}</Text>
           <View style={styles.sessionMeta}>
             <Text style={styles.sessionHost}>{item.host?.name || "Unknown"}</Text>
             {item.viewerCount > 0 && (
-              <Text style={styles.sessionViewers}>👁 {item.viewerCount}</Text>
+              <View style={styles.sessionViewers}>
+                <Ionicons name="eye-outline" size={14} color={theme.textMuted} />
+                <Text style={styles.sessionViewersText}>{item.viewerCount}</Text>
+              </View>
             )}
           </View>
         </View>
@@ -117,7 +121,7 @@ export default function HomeScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.accent} />}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyEmoji}>📡</Text>
+            <Ionicons name="radio-outline" size={56} color={theme.textMuted} style={styles.emptyEmoji} />
             <Text style={styles.emptyTitle}>No live sessions</Text>
             <Text style={styles.emptySubtitle}>Be the first to go live!</Text>
           </View>
@@ -187,14 +191,15 @@ const createStyles = (theme: AppTheme) =>
   },
   liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#fff", marginRight: 6 },
   liveText: { color: "#fff", fontWeight: "700", fontSize: 12 },
-  placeholderEmoji: { fontSize: 48 },
+  placeholderEmoji: { marginBottom: 0 },
   sessionInfo: { padding: 14 },
   sessionTitle: { fontSize: 17, fontWeight: "700", color: theme.text },
   sessionMeta: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 4 },
   sessionHost: { fontSize: 14, color: theme.textMuted },
-  sessionViewers: { fontSize: 13, color: theme.textMuted, fontWeight: "600" },
+  sessionViewers: { flexDirection: "row", alignItems: "center", gap: 4 },
+  sessionViewersText: { fontSize: 13, color: theme.textMuted, fontWeight: "600" },
   empty: { alignItems: "center", marginTop: 100 },
-  emptyEmoji: { fontSize: 64, marginBottom: 16 },
+  emptyEmoji: { marginBottom: 16 },
   emptyTitle: { fontSize: 20, fontWeight: "700", color: theme.text },
   emptySubtitle: { fontSize: 15, color: theme.textMuted, marginTop: 4 },
   goLiveButton: {

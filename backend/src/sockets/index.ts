@@ -125,6 +125,29 @@ export function initializeSocket(httpServer: HttpServer) {
       });
     });
 
+    socket.on("session_products_sync", async (data: { sessionId: string }) => {
+      if (!isValidSessionId(data.sessionId)) return;
+      if (!(await isHostForSession(data.sessionId, user.userId))) return;
+
+      const session = await prisma.liveSession.findUnique({
+        where: { id: data.sessionId },
+        select: {
+          sessionProducts: {
+            include: {
+              product: true,
+            },
+          },
+        },
+      });
+
+      if (!session) return;
+
+      io.to(data.sessionId).emit("session_products_updated", {
+        sessionId: data.sessionId,
+        sessionProducts: session.sessionProducts,
+      });
+    });
+
     socket.on("disconnect", () => {
       const joinedSessions = Array.from(socketSessions.get(socket.id) || []);
       for (const sessionId of joinedSessions) {

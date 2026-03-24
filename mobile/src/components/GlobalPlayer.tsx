@@ -48,6 +48,7 @@ export default function GlobalPlayer() {
         streamUrl={activeSession.streamUrl}
         livekitToken={lkToken}
         livekitUrl={lkUrl}
+        liveBadgeVariant={mode === "minimized" ? "dot" : "full"}
         isHost={false}
       />
     </View>

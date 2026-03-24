@@ -26,6 +26,8 @@ model Product {
   id        String   @id @default(uuid())
   title     String
   price     Float
+  quantity  Int      @default(1)
+  sizes     String[] @default([])
   imageKey  String?
   imageUrl  String?
   imageMimeType String?

@@ -2,7 +2,10 @@ import prisma from "../prisma/client";
 import { ApiError } from "../utils/ApiError";
 
 export class ProductService {
-  static async create(ownerId: string, data: { title: string; price: number }) {
+  static async create(
+    ownerId: string,
+    data: { title: string; price: number; quantity: number; sizes: string[] }
+  ) {
     return prisma.product.create({
       data: { ...data, ownerId },
     });
@@ -28,7 +31,11 @@ export class ProductService {
     return product;
   }
 
-  static async update(id: string, ownerId: string, data: Partial<{ title: string; price: number }>) {
+  static async update(
+    id: string,
+    ownerId: string,
+    data: Partial<{ title: string; price: number; quantity: number; sizes: string[] }>
+  ) {
     const product = await prisma.product.findUnique({ where: { id } });
     if (!product) throw new ApiError(404, "Product not found");
     if (product.ownerId !== ownerId) throw new ApiError(403, "Not authorized");

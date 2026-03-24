@@ -1,5 +1,6 @@
 import React from "react";
 import { View, TouchableOpacity, Text, StyleSheet } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 
 interface HostControlsProps {
   isCameraOn: boolean;
@@ -24,7 +25,12 @@ export default function HostControls({
         style={[styles.controlButton, !isMicOn && styles.controlOff]}
         onPress={onToggleMic}
       >
-        <Text style={styles.controlIcon}>{isMicOn ? "🎙️" : "🔇"}</Text>
+        <Ionicons
+          name={isMicOn ? "mic" : "mic-off"}
+          size={22}
+          color="#fff"
+          style={styles.controlIcon}
+        />
         <Text style={styles.controlLabel}>{isMicOn ? "Mute" : "Unmute"}</Text>
       </TouchableOpacity>
 
@@ -32,14 +38,24 @@ export default function HostControls({
         style={[styles.controlButton, !isCameraOn && styles.controlOff]}
         onPress={onToggleCamera}
       >
-        <Text style={styles.controlIcon}>{isCameraOn ? "📹" : "📷"}</Text>
+        <Ionicons
+          name={isCameraOn ? "videocam" : "videocam-off"}
+          size={22}
+          color="#fff"
+          style={styles.controlIcon}
+        />
         <Text style={styles.controlLabel}>
           {isCameraOn ? "Cam Off" : "Cam On"}
         </Text>
       </TouchableOpacity>
 
       <TouchableOpacity style={styles.controlButton} onPress={onFlipCamera}>
-        <Text style={styles.controlIcon}>🔄</Text>
+        <Ionicons
+          name="camera-reverse"
+          size={22}
+          color="#fff"
+          style={styles.controlIcon}
+        />
         <Text style={styles.controlLabel}>
           {isFrontCamera ? "Back" : "Front"}
         </Text>
@@ -69,7 +85,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(239, 68, 68, 0.2)",
   },
   controlIcon: {
-    fontSize: 22,
+    marginBottom: 0,
   },
   controlLabel: {
     color: "#fff",

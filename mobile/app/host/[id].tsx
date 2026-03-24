@@ -11,6 +11,7 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Socket } from "socket.io-client";
+import { Ionicons } from "@expo/vector-icons";
 import { apiClient } from "../../src/api/client";
 import { connectSocket, disconnectSocket } from "../../src/api/socket";
 import { getLiveKitToken } from "../../src/api/livekit";
@@ -200,7 +201,8 @@ export default function HostScreen() {
         method: "POST",
         body: { productId },
       });
-      loadSession();
+      await loadSession();
+      socketRef.current?.emit("session_products_sync", { sessionId });
     } catch (err: any) {
       Alert.alert("Error", err.message);
     }
@@ -213,7 +215,8 @@ export default function HostScreen() {
         method: "DELETE",
         body: { productId },
       });
-      loadSession();
+      await loadSession();
+      socketRef.current?.emit("session_products_sync", { sessionId });
     } catch (err: any) {
       Alert.alert("Error", err.message);
     }
@@ -227,8 +230,9 @@ export default function HostScreen() {
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.scroll}>
         <View style={styles.topBar}>
-          <TouchableOpacity onPress={handleBack}>
-            <Text style={styles.backText}>← Back</Text>
+          <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={18} color={theme.textMuted} />
+            <Text style={styles.backText}>Back</Text>
           </TouchableOpacity>
           <View style={styles.topBarRight}>
             {streamConnected && (
@@ -295,12 +299,20 @@ export default function HostScreen() {
               <ImageWithFallback
                 uri={sp.product.imageUrl}
                 style={styles.productThumb}
-                fallbackText="📦"
-                fallbackStyle={styles.productEmoji}
+                fallback={
+                  <Ionicons
+                    name="cube-outline"
+                    size={24}
+                    color={theme.textMuted}
+                    style={styles.productEmoji}
+                  />
+                }
               />
               <View style={styles.productInfo}>
                 <Text style={styles.productTitle}>{sp.product.title}</Text>
-                <Text style={styles.productPrice}>${sp.product.price.toFixed(2)}</Text>
+                <Text style={styles.productPrice}>₹{sp.product.price.toFixed(2)}</Text>
+                <Text style={styles.productMeta}>Qty: {sp.product.quantity}</Text>
+                <Text style={styles.productMeta}>Sizes: {sp.product.sizes?.join(", ") || "Not set"}</Text>
               </View>
               <TouchableOpacity
                 style={styles.unlistButton}
@@ -326,14 +338,22 @@ export default function HostScreen() {
               <ImageWithFallback
                 uri={product.imageUrl}
                 style={styles.productThumb}
-                fallbackText="📦"
-                fallbackStyle={styles.productEmoji}
+                fallback={
+                  <Ionicons
+                    name="cube-outline"
+                    size={24}
+                    color={theme.textMuted}
+                    style={styles.productEmoji}
+                  />
+                }
               />
               <View style={styles.productInfo}>
                 <Text style={styles.productTitle}>{product.title}</Text>
-                <Text style={styles.productPrice}>${product.price.toFixed(2)}</Text>
+                <Text style={styles.productPrice}>₹{product.price.toFixed(2)}</Text>
+                <Text style={styles.productMeta}>Qty: {product.quantity}</Text>
+                <Text style={styles.productMeta}>Sizes: {product.sizes?.join(", ") || "Not set"}</Text>
               </View>
-              <Text style={styles.addIcon}>+</Text>
+              <Ionicons name="add-circle-outline" size={24} color={theme.accent} style={styles.addIcon} />
               </TouchableOpacity>
             ))}
           </>
@@ -345,7 +365,12 @@ export default function HostScreen() {
         ) : (
           messages.slice(0, 20).map((msg) => (
             <View key={msg.id} style={styles.messageRow}>
-              <Text style={styles.messageBadge}>{msg.type === "reaction" ? "❤️" : "❓"}</Text>
+              <Ionicons
+                name={msg.type === "reaction" ? "heart" : "help-circle-outline"}
+                size={18}
+                color={msg.type === "reaction" ? theme.danger : theme.accent}
+                style={styles.messageBadge}
+              />
               <View style={styles.messageContent}>
                 <Text style={styles.messageSender}>{msg.user.name}</Text>
                 <Text style={styles.messageText}>{msg.content}</Text>
@@ -375,6 +400,7 @@ const createStyles = (theme: AppTheme) =>
     alignItems: "center",
     gap: 10,
   },
+  backButton: { flexDirection: "row", alignItems: "center", gap: 6 },
   backText: { color: theme.textMuted, fontSize: 16, fontWeight: "600" },
   connectedBadge: {
     flexDirection: "row",
@@ -421,11 +447,12 @@ const createStyles = (theme: AppTheme) =>
     padding: 14,
     borderRadius: 12,
   },
-  productEmoji: { fontSize: 24 },
+  productEmoji: {},
   productThumb: { width: 48, height: 48, borderRadius: 12 },
   productInfo: { flex: 1, marginLeft: 12 },
   productTitle: { fontSize: 15, fontWeight: "600", color: theme.text },
-  productPrice: { fontSize: 14, color: theme.success, fontWeight: "700", marginTop: 2 },
+  productPrice: { fontSize: 14, color: theme.textMuted, fontWeight: "700", marginTop: 2 },
+  productMeta: { fontSize: 12, color: theme.textMuted, marginTop: 4 },
   unlistButton: {
     backgroundColor: theme.surfaceAlt,
     borderRadius: 8,
@@ -448,7 +475,7 @@ const createStyles = (theme: AppTheme) =>
     borderColor: theme.border,
     borderStyle: "dashed",
   },
-  addIcon: { color: theme.accent, fontSize: 24, fontWeight: "700" },
+  addIcon: {},
   noMessages: { color: theme.textMuted, fontSize: 14, marginHorizontal: 16 },
   messageRow: {
     flexDirection: "row",
@@ -456,7 +483,7 @@ const createStyles = (theme: AppTheme) =>
     marginHorizontal: 16,
     marginBottom: 10,
   },
-  messageBadge: { fontSize: 18, marginRight: 10, marginTop: 2 },
+  messageBadge: { marginRight: 10, marginTop: 2 },
   messageContent: { flex: 1 },
   messageSender: { fontSize: 13, fontWeight: "700", color: theme.accent },
   messageText: { fontSize: 14, color: theme.text, marginTop: 2 },

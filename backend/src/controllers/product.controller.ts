@@ -4,12 +4,52 @@ import { catchAsync } from "../utils/catchAsync";
 import { sendSuccess } from "../utils/ApiResponse";
 import { ApiError } from "../utils/ApiError";
 
-export const createProduct = catchAsync(async (req: Request, res: Response) => {
-  const { title, price } = req.body;
-  if (!title || price === undefined) {
-    throw new ApiError(400, "Title and price are required");
+const ALLOWED_PRODUCT_SIZES = ["S", "M", "L", "XL", "Free Size"] as const;
+
+function sanitizeSizes(value: unknown) {
+  if (!Array.isArray(value)) {
+    throw new ApiError(400, "Please select at least one valid size");
   }
-  const product = await ProductService.create(req.user!.userId, { title, price });
+
+  const normalized = Array.from(
+    new Set(
+      value
+        .map((size) => (typeof size === "string" ? size.trim() : ""))
+        .filter((size): size is string => ALLOWED_PRODUCT_SIZES.includes(size as (typeof ALLOWED_PRODUCT_SIZES)[number]))
+    )
+  );
+
+  if (normalized.length === 0) {
+    throw new ApiError(400, "Please select at least one valid size");
+  }
+
+  return normalized;
+}
+
+export const createProduct = catchAsync(async (req: Request, res: Response) => {
+  const { title, price, quantity, sizes } = req.body;
+  if (!title || price === undefined || quantity === undefined || sizes === undefined) {
+    throw new ApiError(400, "Title, price, quantity and sizes are required");
+  }
+
+  const parsedPrice = Number(price);
+  if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
+    throw new ApiError(400, "Price must be a valid number greater than 0");
+  }
+
+  const parsedQuantity = Number(quantity);
+  if (!Number.isInteger(parsedQuantity) || parsedQuantity < 0) {
+    throw new ApiError(400, "Quantity must be a valid whole number");
+  }
+
+  const parsedSizes = sanitizeSizes(sizes);
+
+  const product = await ProductService.create(req.user!.userId, {
+    title,
+    price: parsedPrice,
+    quantity: parsedQuantity,
+    sizes: parsedSizes,
+  });
   sendSuccess(res, product, "Product created", 201);
 });
 
@@ -26,7 +66,40 @@ export const getProduct = catchAsync(async (req: Request, res: Response) => {
 });
 
 export const updateProduct = catchAsync(async (req: Request, res: Response) => {
-  const product = await ProductService.update(String(req.params.id), req.user!.userId, req.body);
+  const { title, price, quantity, sizes } = req.body as {
+    title?: string;
+    price?: number | string;
+    quantity?: number | string;
+    sizes?: string[];
+  };
+
+  const updateData: { title?: string; price?: number; quantity?: number; sizes?: string[] } = {};
+
+  if (title !== undefined) {
+    updateData.title = title;
+  }
+
+  if (price !== undefined) {
+    const parsedPrice = Number(price);
+    if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
+      throw new ApiError(400, "Price must be a valid number greater than 0");
+    }
+    updateData.price = parsedPrice;
+  }
+
+  if (quantity !== undefined) {
+    const parsedQuantity = Number(quantity);
+    if (!Number.isInteger(parsedQuantity) || parsedQuantity < 0) {
+      throw new ApiError(400, "Quantity must be a valid whole number");
+    }
+    updateData.quantity = parsedQuantity;
+  }
+
+  if (sizes !== undefined) {
+    updateData.sizes = sanitizeSizes(sizes);
+  }
+
+  const product = await ProductService.update(String(req.params.id), req.user!.userId, updateData);
   sendSuccess(res, product, "Product updated");
 });
 

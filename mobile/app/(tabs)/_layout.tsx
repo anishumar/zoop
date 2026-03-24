@@ -1,17 +1,28 @@
 import { Tabs } from "expo-router";
-import { Text } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useAppTheme } from "../../src/theme";
 
-function TabIcon({ name, focused }: { name: string; focused: boolean }) {
-  const icons: Record<string, string> = {
-    home: "🏠",
-    products: "📦",
-    profile: "👤",
+function TabIcon({
+  name,
+  focused,
+  color,
+}: {
+  name: string;
+  focused: boolean;
+  color: string;
+}) {
+  const icons: Record<string, keyof typeof Ionicons.glyphMap> = {
+    home: focused ? "home" : "home-outline",
+    products: focused ? "cube" : "cube-outline",
+    profile: focused ? "person" : "person-outline",
   };
   return (
-    <Text style={{ fontSize: 22, opacity: focused ? 1 : 0.5 }}>
-      {icons[name] || "•"}
-    </Text>
+    <Ionicons
+      name={icons[name] || "ellipse"}
+      size={22}
+      color={color}
+      style={{ opacity: focused ? 1 : 0.5 }}
+    />
   );
 }
 
@@ -33,21 +44,21 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: "Live",
-          tabBarIcon: ({ focused }) => <TabIcon name="home" focused={focused} />,
+          tabBarIcon: ({ focused, color }) => <TabIcon name="home" focused={focused} color={color} />,
         }}
       />
       <Tabs.Screen
         name="products"
         options={{
           title: "Products",
-          tabBarIcon: ({ focused }) => <TabIcon name="products" focused={focused} />,
+          tabBarIcon: ({ focused, color }) => <TabIcon name="products" focused={focused} color={color} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: "Profile",
-          tabBarIcon: ({ focused }) => <TabIcon name="profile" focused={focused} />,
+          tabBarIcon: ({ focused, color }) => <TabIcon name="profile" focused={focused} color={color} />,
         }}
       />
     </Tabs>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import {
   Image,
   ImageStyle,
@@ -10,13 +10,15 @@ import {
 interface ImageWithFallbackProps {
   uri?: string | null;
   style: StyleProp<ImageStyle>;
-  fallbackText: string;
-  fallbackStyle: StyleProp<TextStyle>;
+  fallback?: ReactNode;
+  fallbackText?: string;
+  fallbackStyle?: StyleProp<TextStyle>;
 }
 
 export default function ImageWithFallback({
   uri,
   style,
+  fallback,
   fallbackText,
   fallbackStyle,
 }: ImageWithFallbackProps) {
@@ -27,6 +29,9 @@ export default function ImageWithFallback({
   }, [uri]);
 
   if (!uri || hasError) {
+    if (fallback) {
+      return <>{fallback}</>;
+    }
     return <Text style={fallbackStyle}>{fallbackText}</Text>;
   }
 

@@ -1,9 +1,9 @@
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Platform } from "react-native";
 import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { usePlayer } from "../contexts/PlayerContext";
 // Removed duplicate VideoPlayer
 import { useAppTheme, AppTheme } from "../theme";
-// Removed Ionicons import for reliability
 
 const { width } = Dimensions.get("window");
 const MINI_PLAYER_WIDTH = 160;
@@ -44,10 +44,10 @@ export default function MiniPlayer() {
       </View>
       <View style={styles.actions}>
         <TouchableOpacity onPress={handleExpand} style={styles.iconButton}>
-          <Text style={{ fontSize: 20 }}>⤢</Text>
+          <Ionicons name="expand-outline" size={18} color={theme.text} />
         </TouchableOpacity>
         <TouchableOpacity onPress={closePlayer} style={styles.iconButton}>
-          <Text style={{ fontSize: 22, color: theme.text }}>×</Text>
+          <Ionicons name="close" size={18} color={theme.text} />
         </TouchableOpacity>
       </View>
     </View>
@@ -114,8 +114,11 @@ const createStyles = (theme: AppTheme) =>
       gap: 12,
     },
     iconButton: {
-      padding: 8,
-      borderRadius: 20,
+      width: 36,
+      height: 36,
+      borderRadius: 18,
       backgroundColor: theme.mode === "dark" ? "rgba(255, 255, 255, 0.05)" : "rgba(0, 0, 0, 0.03)",
+      alignItems: "center",
+      justifyContent: "center",
     },
   });

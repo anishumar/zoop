@@ -7,6 +7,7 @@ interface VideoPlayerProps {
   streamUrl?: string | null;
   livekitToken?: string | null;
   livekitUrl?: string | null;
+  liveBadgeVariant?: "full" | "dot";
   isHost?: boolean;
   isCameraEnabled?: boolean;
   isMicrophoneEnabled?: boolean;
@@ -20,6 +21,7 @@ export default function VideoPlayer({
   streamUrl,
   livekitToken,
   livekitUrl,
+  liveBadgeVariant = "full",
   isHost = false,
   isCameraEnabled = true,
   isMicrophoneEnabled = true,
@@ -40,7 +42,7 @@ export default function VideoPlayer({
           onConnectionChange={onConnectionChange}
           onParticipantCountChange={onParticipantCountChange}
         />
-        <LiveBadge />
+        <LiveBadge variant={liveBadgeVariant} />
       </View>
     );
   }
@@ -49,10 +51,18 @@ export default function VideoPlayer({
     return <ConnectingPlayer />;
   }
 
-  return <MockVideoPlayer />;
+  return <MockVideoPlayer liveBadgeVariant={liveBadgeVariant} />;
 }
 
-function LiveBadge() {
+function LiveBadge({ variant = "full" }: { variant?: "full" | "dot" }) {
+  if (variant === "dot") {
+    return (
+      <View style={styles.liveDotBadge}>
+        <View style={styles.liveDotSolo} />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.liveIndicator}>
       <View style={styles.liveDot} />
@@ -70,10 +80,10 @@ function ConnectingPlayer() {
   );
 }
 
-function MockVideoPlayer() {
+function MockVideoPlayer({ liveBadgeVariant = "full" }: { liveBadgeVariant?: "full" | "dot" }) {
   return (
     <View style={styles.container}>
-      <LiveBadge />
+      <LiveBadge variant={liveBadgeVariant} />
       <Text style={styles.mockText}>Live Stream</Text>
       <Text style={styles.subText}>Video streaming is mocked</Text>
     </View>
@@ -108,6 +118,24 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 4,
     zIndex: 10,
+  },
+  liveDotBadge: {
+    position: "absolute",
+    top: 10,
+    left: 10,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: "rgba(0, 0, 0, 0.35)",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 10,
+  },
+  liveDotSolo: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#ef4444",
   },
   liveDot: {
     width: 8,

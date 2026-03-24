@@ -13,6 +13,7 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Socket } from "socket.io-client";
+import { Ionicons } from "@expo/vector-icons";
 import { apiClient } from "../../src/api/client";
 import { connectSocket, disconnectSocket } from "../../src/api/socket";
 import { getLiveKitToken } from "../../src/api/livekit";
@@ -99,9 +100,9 @@ export default function ViewerScreen() {
   }, [id]); // Only run on ID change
 
   useEffect(() => {
-    if (!session || isMinimizing.current) return;
+    if (!session || isMinimizing.current || streamEnded) return;
     openPlayer(session, effectiveToken, effectiveUrl);
-  }, [effectiveToken, effectiveUrl, openPlayer, session]);
+  }, [effectiveToken, effectiveUrl, openPlayer, session, streamEnded]);
 
   async function fetchLiveKitToken() {
     if (!id) return;
@@ -145,6 +146,7 @@ export default function ViewerScreen() {
 
       const handleStreamEnded = () => {
         setStreamEnded(true);
+        closePlayer();
       };
 
       const handleStreamStarted = () => {
@@ -156,12 +158,26 @@ export default function ViewerScreen() {
         setTimeout(() => setHighlightedProduct(null), 5000);
       };
 
+      const handleSessionProductsUpdated = (data: {
+        sessionProducts: NonNullable<LiveSession["sessionProducts"]>;
+      }) => {
+        setSession((prev) =>
+          prev
+            ? {
+                ...prev,
+                sessionProducts: data.sessionProducts,
+              }
+            : prev
+        );
+      };
+
       socket.on("viewer_count_update", handleViewerCountUpdate);
       socket.on("new_reaction", handleNewReaction);
       socket.on("new_question", handleNewQuestion);
       socket.on("stream_ended", handleStreamEnded);
       socket.on("stream_started", handleStreamStarted);
       socket.on("product_highlight", handleProductHighlight);
+      socket.on("session_products_updated", handleSessionProductsUpdated);
       socket.emit("join_live", id);
 
       socketCleanupRef.current = () => {
@@ -171,6 +187,7 @@ export default function ViewerScreen() {
         socket.off("stream_ended", handleStreamEnded);
         socket.off("stream_started", handleStreamStarted);
         socket.off("product_highlight", handleProductHighlight);
+        socket.off("session_products_updated", handleSessionProductsUpdated);
       };
     } catch (err) {
       console.error("Socket connection failed:", err);
@@ -205,8 +222,9 @@ export default function ViewerScreen() {
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <View style={styles.topBar}>
-          <TouchableOpacity onPress={handleBack}>
-            <Text style={styles.backText}>← Back</Text>
+          <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={18} color={theme.textMuted} />
+            <Text style={styles.backText}>Back</Text>
           </TouchableOpacity>
           <View style={styles.topBarRight}>
             {streamConnected && (
@@ -216,7 +234,7 @@ export default function ViewerScreen() {
               </View>
             )}
             <View style={styles.viewerBadge}>
-              <Text style={styles.viewerIcon}>👁</Text>
+              <Ionicons name="eye-outline" size={14} color={theme.text} style={styles.viewerIcon} />
               <Text style={styles.viewerCountText}>{viewerCount}</Text>
             </View>
           </View>
@@ -250,9 +268,16 @@ export default function ViewerScreen() {
 
         {products.length > 0 && (
           <TouchableOpacity style={styles.productsToggle} onPress={() => setShowProducts(!showProducts)}>
-            <Text style={styles.productsToggleText}>
-              {showProducts ? "Hide Products ▲" : `Products (${products.length}) ▼`}
-            </Text>
+            <View style={styles.productsToggleContent}>
+              <Text style={styles.productsToggleText}>
+                {showProducts ? "Hide Products" : `Products (${products.length})`}
+              </Text>
+              <Ionicons
+                name={showProducts ? "chevron-up" : "chevron-down"}
+                size={16}
+                color={theme.accent}
+              />
+            </View>
           </TouchableOpacity>
         )}
 
@@ -273,11 +298,21 @@ export default function ViewerScreen() {
                 <ImageWithFallback
                   uri={item.imageUrl}
                   style={styles.productImage}
-                  fallbackText="📦"
-                  fallbackStyle={styles.productEmoji}
+                  fallback={
+                    <Ionicons
+                      name="cube-outline"
+                      size={24}
+                      color={theme.textMuted}
+                      style={styles.productEmoji}
+                    />
+                  }
                 />
                 <Text style={styles.productTitle} numberOfLines={1}>{item.title}</Text>
-                <Text style={styles.productPrice}>${item.price.toFixed(2)}</Text>
+                <Text style={styles.productPrice}>₹{item.price.toFixed(2)}</Text>
+                <Text style={styles.productMeta}>Qty: {item.quantity}</Text>
+                <Text style={styles.productMeta} numberOfLines={2}>
+                  Sizes: {item.sizes?.join(", ") || "Not set"}
+                </Text>
               </View>
             )}
           />
@@ -291,7 +326,12 @@ export default function ViewerScreen() {
             style={styles.chatList}
             renderItem={({ item }) => (
               <View style={styles.chatMessage}>
-                <Text style={styles.chatBadge}>{item.type === "reaction" ? "" : "❓"}</Text>
+                <Ionicons
+                  name={item.type === "reaction" ? "heart" : "help-circle-outline"}
+                  size={16}
+                  color={item.type === "reaction" ? theme.danger : theme.accent}
+                  style={styles.chatBadge}
+                />
                 <Text style={styles.chatSender}>{item.user.name}: </Text>
                 <Text style={styles.chatText}>{item.content}</Text>
               </View>
@@ -341,6 +381,7 @@ const createStyles = (theme: AppTheme) =>
     alignItems: "center",
     gap: 8,
   },
+  backButton: { flexDirection: "row", alignItems: "center", gap: 6 },
   backText: { color: theme.textMuted, fontSize: 16, fontWeight: "600" },
   liveBadge: {
     flexDirection: "row",
@@ -370,7 +411,7 @@ const createStyles = (theme: AppTheme) =>
     paddingVertical: 6,
     borderRadius: 20,
   },
-  viewerIcon: { fontSize: 14, marginRight: 4 },
+  viewerIcon: { marginRight: 4 },
   viewerCountText: { color: theme.text, fontWeight: "700", fontSize: 14 },
   videoContainer: {
     marginHorizontal: 16,
@@ -418,6 +459,7 @@ const createStyles = (theme: AppTheme) =>
   sessionTitle: { fontSize: 18, fontWeight: "700", color: theme.text },
   hostName: { fontSize: 14, color: theme.textMuted, marginTop: 2 },
   productsToggle: { paddingHorizontal: 16, paddingTop: 12 },
+  productsToggleContent: { flexDirection: "row", alignItems: "center", gap: 4 },
   productsToggleText: { color: theme.accent, fontWeight: "700", fontSize: 14 },
   productsList: { paddingHorizontal: 16, paddingTop: 8 },
   productCard: {
@@ -439,13 +481,14 @@ const createStyles = (theme: AppTheme) =>
     borderRadius: 8,
     marginBottom: 6,
   },
-  productEmoji: { fontSize: 28, marginBottom: 6 },
+  productEmoji: { marginBottom: 6 },
   productTitle: { fontSize: 13, fontWeight: "600", color: theme.text, textAlign: "center" },
-  productPrice: { fontSize: 14, color: theme.success, fontWeight: "700", marginTop: 4 },
+  productPrice: { fontSize: 14, color: theme.textMuted, fontWeight: "700", marginTop: 4 },
+  productMeta: { fontSize: 12, color: theme.textMuted, marginTop: 2, textAlign: "center" },
   chatSection: { flex: 1, marginTop: 8 },
   chatList: { paddingHorizontal: 16 },
   chatMessage: { flexDirection: "row", flexWrap: "wrap", marginBottom: 6 },
-  chatBadge: { fontSize: 14, marginRight: 4 },
+  chatBadge: { marginRight: 4, marginTop: 1 },
   chatSender: { fontSize: 13, fontWeight: "700", color: theme.accent },
   chatText: { fontSize: 13, color: theme.text },
   reactionBar: {
