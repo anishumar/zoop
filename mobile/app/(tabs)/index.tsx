@@ -12,6 +12,7 @@ import {
   Platform,
   KeyboardAvoidingView,
   ActivityIndicator,
+  Image,
 } from "react-native";
 import { useRouter, useFocusEffect, Stack } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -19,6 +20,8 @@ import { apiClient } from "../../src/api/client";
 import { LiveSession, ApiResponse } from "../../src/types";
 import { AppTheme, useAppTheme } from "../../src/theme";
 import { useAuth } from "../../src/contexts/AuthContext";
+import ProfileMenuBottomSheet from "../../src/components/ProfileMenuBottomSheet";
+import CreateMenuBottomSheet from "../../src/components/CreateMenuBottomSheet";
 
 interface SessionListResponse {
   sessions: LiveSession[];
@@ -35,6 +38,8 @@ export default function HomeScreen() {
   const [followingSessions, setFollowingSessions] = useState<LiveSession[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [showGoLive, setShowGoLive] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [showCreateMenu, setShowCreateMenu] = useState(false);
   const [sessionTitle, setSessionTitle] = useState("");
   const [creating, setCreating] = useState(false);
   const theme = useAppTheme();
@@ -184,11 +189,32 @@ export default function HomeScreen() {
     <View style={styles.container}>
       <Stack.Screen
         options={{
+          headerTitle: "",
+          headerLeft: () => (
+            <Text style={{ fontSize: 24, fontWeight: "800", marginLeft: 16, color: theme.text }}>
+              Home
+            </Text>
+          ),
           headerRight: () => (
-            <TouchableOpacity style={styles.headerPill} onPress={() => setShowGoLive(true)}>
-              <Ionicons name="add" size={18} color={theme.textOnAccent} />
-              <Text style={styles.headerPillText}>Go Live</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <TouchableOpacity
+                style={styles.headerPill}
+                onPress={() => setShowCreateMenu(true)}
+              >
+                <Ionicons name="add" size={18} color={theme.textOnAccent} />
+                <Text style={styles.headerPillText}>Create</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.navAvatar, { marginRight: 16 }]}
+                onPress={() => setShowMenu(true)}
+              >
+                {user?.avatarUrl ? (
+                  <Image source={{ uri: user.avatarUrl }} style={{ width: 34, height: 34, borderRadius: 17 }} />
+                ) : (
+                  <Text style={styles.navAvatarText}>{user?.name?.charAt(0).toUpperCase() || "?"}</Text>
+                )}
+              </TouchableOpacity>
+            </View>
           ),
         }}
       />
@@ -275,6 +301,16 @@ export default function HomeScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <ProfileMenuBottomSheet visible={showMenu} onClose={() => setShowMenu(false)} />
+      <CreateMenuBottomSheet 
+        visible={showCreateMenu} 
+        onClose={() => setShowCreateMenu(false)} 
+        onAction={(action) => {
+          if (action === "go_live") setShowGoLive(true);
+          if (action === "create_reel") Alert.alert("Create Reel", "Coming soon!");
+        }}
+      />
     </View>
   );
 }
@@ -282,6 +318,11 @@ export default function HomeScreen() {
 const createStyles = (theme: AppTheme) =>
   StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.background },
+  navAvatar: {
+    width: 34, height: 34, borderRadius: 17, backgroundColor: theme.accent,
+    justifyContent: "center", alignItems: "center",
+  },
+  navAvatarText: { fontSize: 15, fontWeight: "800", color: theme.textOnAccent },
   segmentedWrapper: {
     paddingHorizontal: 16,
     paddingTop: 8,
@@ -379,7 +420,6 @@ const createStyles = (theme: AppTheme) =>
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
-    marginRight: 16,
     gap: 4,
   },
   headerPillText: {

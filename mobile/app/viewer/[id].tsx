@@ -42,6 +42,7 @@ export default function ViewerScreen() {
   const [showProducts, setShowProducts] = useState(false);
   const [floatingReactions, setFloatingReactions] = useState<{ id: number; emoji: string }[]>([]);
   const reactionIdRef = useRef(0);
+  const [wishlist, setWishlist] = useState<Set<string>>(new Set());
 
   const [lkToken, setLkToken] = useState<string | null>(null);
   const [lkUrl, setLkUrl] = useState<string | null>(null);
@@ -86,6 +87,7 @@ export default function ViewerScreen() {
     loadSession();
     setupSocket();
     fetchLiveKitToken();
+    fetchWishlist();
 
     return () => {
       socketCleanupRef.current?.();
@@ -113,6 +115,27 @@ export default function ViewerScreen() {
       setLkUrl(data.url);
     } catch (err: any) {
       console.error("Failed to get LiveKit token:", err.message);
+    }
+  }
+
+  async function fetchWishlist() {
+    try {
+      const res = await apiClient<ApiResponse<{ products: { id: string }[] }>>("/wishlist");
+      setWishlist(new Set(res.data.products.map(p => p.id)));
+    } catch (err) {}
+  }
+
+  async function toggleWishlist(productId: string) {
+    try {
+      setWishlist((prev) => {
+        const next = new Set(prev);
+        if (next.has(productId)) next.delete(productId);
+        else next.add(productId);
+        return next;
+      });
+      await apiClient(`/wishlist/${productId}/toggle`, { method: "POST" });
+    } catch {
+      fetchWishlist();
     }
   }
 
@@ -315,6 +338,16 @@ export default function ViewerScreen() {
                   highlightedProduct === item.id && styles.productHighlighted,
                 ]}
               >
+                <TouchableOpacity 
+                  style={styles.wishlistBtn}
+                  onPress={() => toggleWishlist(item.id)}
+                >
+                  <Ionicons 
+                    name={wishlist.has(item.id) ? "heart" : "heart-outline"} 
+                    size={20} 
+                    color={wishlist.has(item.id) ? "#ef4444" : theme.text} 
+                  />
+                </TouchableOpacity>
                 <ImageWithFallback
                   uri={item.imageUrl}
                   style={styles.productImage}
@@ -499,8 +532,18 @@ const createStyles = (theme: AppTheme) =>
     borderRadius: 12,
     padding: 14,
     marginRight: 12,
-    width: 130,
+    width: 140,
     alignItems: "center",
+    position: "relative",
+  },
+  wishlistBtn: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    zIndex: 10,
+    padding: 6,
+    backgroundColor: theme.surfaceAlt,
+    borderRadius: 16,
   },
   productHighlighted: {
     borderWidth: 2,

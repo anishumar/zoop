@@ -13,7 +13,6 @@ function TabIcon({
 }) {
   const icons: Record<string, keyof typeof Ionicons.glyphMap> = {
     home: focused ? "home" : "home-outline",
-    products: focused ? "cube" : "cube-outline",
     profile: focused ? "person" : "person-outline",
   };
   return (
@@ -43,15 +42,14 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Live",
+          title: "Home",
           tabBarIcon: ({ focused, color }) => <TabIcon name="home" focused={focused} color={color} />,
         }}
       />
       <Tabs.Screen
         name="products"
         options={{
-          title: "Products",
-          tabBarIcon: ({ focused, color }) => <TabIcon name="products" focused={focused} color={color} />,
+          href: null,
         }}
       />
       <Tabs.Screen

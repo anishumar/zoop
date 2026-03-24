@@ -13,6 +13,8 @@ import {
   TextInput,
   ActivityIndicator,
   KeyboardAvoidingView,
+  ScrollView,
+  Image,
 } from "react-native";
 import { useFocusEffect, Stack } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -21,8 +23,10 @@ import { useAuth } from "../../src/contexts/AuthContext";
 import { apiClient } from "../../src/api/client";
 import { Product, User, ApiResponse } from "../../src/types";
 import { AppTheme, useAppTheme } from "../../src/theme";
-import { uploadAvatarImage } from "../../src/api/uploads";
+import { uploadProductImage } from "../../src/api/uploads";
 import ImageWithFallback from "../../src/components/ImageWithFallback";
+import ProfileMenuBottomSheet from "../../src/components/ProfileMenuBottomSheet";
+import CreateMenuBottomSheet from "../../src/components/CreateMenuBottomSheet";
 
 interface ProductListResponse {
   products: Product[];
@@ -31,17 +35,12 @@ interface ProductListResponse {
 
 type ProfileTab = "streams" | "products";
 
-interface MenuItem {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  onPress: () => void;
-  danger?: boolean;
-}
-
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const GRID_PADDING = 16;
 const GRID_GAP = 12;
 const CARD_WIDTH = (SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GAP) / 2;
+
+const PRODUCT_SIZE_OPTIONS = ["S", "M", "L", "XL", "Free Size"] as const;
 
 export default function ProfileScreen() {
   const { user, logout, setUser } = useAuth();
@@ -52,14 +51,31 @@ export default function ProfileScreen() {
   const [products, setProducts] = useState<Product[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [showCreateMenu, setShowCreateMenu] = useState(false);
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
 
-  // Edit modal state
-  type EditField = "name" | "bio" | "phone" | null;
-  const [editField, setEditField] = useState<EditField>(null);
-  const [editValue, setEditValue] = useState("");
-  const [saving, setSaving] = useState(false);
+
+
+  // Product CRUD state
+  const [showProductForm, setShowProductForm] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [actionProduct, setActionProduct] = useState<Product | null>(null);
+  const [prodTitle, setProdTitle] = useState("");
+  const [prodPrice, setProdPrice] = useState("");
+  const [prodQuantity, setProdQuantity] = useState("1");
+  const [prodSizes, setProdSizes] = useState<string[]>([]);
+  const [prodImage, setProdImage] = useState<{
+    uri: string;
+    mimeType: string;
+    fileSize: number;
+    width?: number;
+    height?: number;
+  } | null>(null);
+  const [prodSaving, setProdSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // ─── Data Fetching ──────────────────────────────────
 
   const fetchProducts = useCallback(async () => {
     try {
@@ -96,126 +112,147 @@ export default function ProfileScreen() {
     setRefreshing(false);
   }
 
-  function handleMenuAction(action: string) {
-    setShowMenu(false);
-    // small delay so menu closes before opening new modal
-    setTimeout(() => {
-      switch (action) {
-        case "edit_name":
-          setEditValue(user?.name || "");
-          setEditField("name");
-          break;
-        case "about":
-          setEditValue(user?.bio || "");
-          setEditField("bio");
-          break;
-        case "phone":
-          setEditValue(user?.phone || "");
-          setEditField("phone");
-          break;
-        case "profile_picture":
-          handlePickAvatar();
-          break;
-        case "wishlist":
-          Alert.alert("Wishlist", "Coming soon!");
-          break;
-        case "signout":
-          logout();
-          break;
-      }
-    }, 300);
+
+
+  // ─── Product CRUD Handlers ──────────────────────────
+
+  function resetProductForm() {
+    setShowProductForm(false);
+    setEditingProduct(null);
+    setProdTitle("");
+    setProdPrice("");
+    setProdQuantity("1");
+    setProdSizes([]);
+    setProdImage(null);
   }
 
-  async function handleSaveField() {
-    if (!editField) return;
-    setSaving(true);
+  function openCreateProductModal() {
+    resetProductForm();
+    setShowProductForm(true);
+  }
+
+  function openEditProductModal(product: Product) {
+    setEditingProduct(product);
+    setProdTitle(product.title);
+    setProdPrice(String(product.price));
+    setProdQuantity(String(product.quantity));
+    setProdSizes(product.sizes ?? []);
+    setProdImage(null);
+    setShowProductForm(true);
+  }
+
+  async function handleSubmitProduct() {
+    if (!prodTitle.trim() || !prodPrice.trim() || !prodQuantity.trim()) {
+      Alert.alert("Error", "Title, price and quantity are required"); return;
+    }
+    const priceNum = parseFloat(prodPrice);
+    if (isNaN(priceNum) || priceNum <= 0) { Alert.alert("Error", "Enter a valid price"); return; }
+    const quantityNum = parseInt(prodQuantity, 10);
+    if (!Number.isInteger(quantityNum) || quantityNum < 0) { Alert.alert("Error", "Enter a valid quantity"); return; }
+    if (prodSizes.length === 0) { Alert.alert("Error", "Select at least one size"); return; }
+
+    setProdSaving(true);
     try {
-      const body: Record<string, string> = {};
-      body[editField] = editValue;
-      const res = await apiClient<ApiResponse<User>>("/users/profile", {
-        method: "PATCH",
-        body,
-      });
-      setUser(res.data);
-      setEditField(null);
+      const productRes = editingProduct
+        ? await apiClient<ApiResponse<Product>>(`/products/${editingProduct.id}`, {
+          method: "PUT",
+          body: { title: prodTitle.trim(), price: priceNum, quantity: quantityNum, sizes: prodSizes },
+        })
+        : await apiClient<ApiResponse<Product>>("/products", {
+          method: "POST",
+          body: { title: prodTitle.trim(), price: priceNum, quantity: quantityNum, sizes: prodSizes },
+        });
+
+      if (prodImage) {
+        const uploaded = await uploadProductImage(prodImage);
+        await apiClient(`/products/${productRes.data.id}/image`, {
+          method: "PATCH",
+          body: {
+            ...uploaded,
+            imageMimeType: prodImage.mimeType,
+            imageSize: prodImage.fileSize,
+            imageWidth: prodImage.width,
+            imageHeight: prodImage.height,
+          },
+        });
+      }
+
+      resetProductForm();
+      fetchProducts();
     } catch (err: any) {
       Alert.alert("Error", err.message);
     } finally {
-      setSaving(false);
+      setProdSaving(false);
     }
   }
 
-  async function handlePickAvatar() {
-    if (Platform.OS === "web") {
-      pickFromGallery();
-      return;
-    }
-    Alert.alert("Profile Picture", "Choose image source", [
-      { text: "Camera", onPress: () => void pickFromCamera() },
-      { text: "Gallery", onPress: () => void pickFromGallery() },
+  function toggleSize(size: string) {
+    setProdSizes((c) => c.includes(size) ? c.filter((s) => s !== size) : [...c, size]);
+  }
+
+  function handlePickProductImage() {
+    if (Platform.OS === "web") { pickProdFromGallery(); return; }
+    Alert.alert("Add Product Image", "Choose image source", [
+      { text: "Camera", onPress: () => void pickProdFromCamera() },
+      { text: "Gallery", onPress: () => void pickProdFromGallery() },
       { text: "Cancel", style: "cancel" },
     ]);
   }
 
-  async function pickFromGallery() {
+  async function pickProdFromGallery() {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert("Permission denied", "Please allow gallery access.");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
+    if (!perm.granted) { Alert.alert("Permission denied"); return; }
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], allowsEditing: true, quality: 0.8 });
     if (!result.canceled && result.assets.length) {
-      await uploadAvatar(result.assets[0]);
+      const a = result.assets[0];
+      setProdImage({ uri: a.uri, mimeType: a.mimeType || "image/jpeg", fileSize: a.fileSize || 0, width: a.width, height: a.height });
     }
   }
 
-  async function pickFromCamera() {
+  async function pickProdFromCamera() {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert("Permission denied", "Please allow camera access.");
-      return;
-    }
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
+    if (!perm.granted) { Alert.alert("Permission denied"); return; }
+    const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.8 });
     if (!result.canceled && result.assets.length) {
-      await uploadAvatar(result.assets[0]);
+      const a = result.assets[0];
+      setProdImage({ uri: a.uri, mimeType: a.mimeType || "image/jpeg", fileSize: a.fileSize || 0, width: a.width, height: a.height });
     }
   }
 
-  async function uploadAvatar(asset: ImagePicker.ImagePickerAsset) {
+  async function handleDeleteProduct(id: string) {
     try {
-      setSaving(true);
-      const uploaded = await uploadAvatarImage({
-        uri: asset.uri,
-        mimeType: asset.mimeType || "image/jpeg",
-        fileSize: asset.fileSize || 0,
-      });
-      const res = await apiClient<ApiResponse<User>>("/users/avatar", {
-        method: "PATCH",
-        body: uploaded,
-      });
-      setUser(res.data);
-      Alert.alert("Success", "Profile picture updated!");
+      setDeletingId(id);
+      await apiClient(`/products/${id}`, { method: "DELETE" });
+      fetchProducts();
     } catch (err: any) {
-      Alert.alert("Error", err.message || "Failed to upload avatar");
+      Alert.alert("Error", err.message);
     } finally {
-      setSaving(false);
+      setDeletingId(null);
     }
   }
 
-  const editFieldLabels: Record<string, string> = {
-    name: "Edit Name",
-    bio: "Edit About",
-    phone: "Phone Number",
-  };
+  function handleProductOptions(product: Product) {
+    if (deletingId || prodSaving) return;
+    setActionProduct(product);
+  }
+
+  function handleEditSelectedProduct() {
+    if (!actionProduct) return;
+    const p = actionProduct;
+    setActionProduct(null);
+    openEditProductModal(p);
+  }
+
+  async function handleDeleteSelectedProduct() {
+    if (!actionProduct) return;
+    const id = actionProduct.id;
+    setActionProduct(null);
+    await handleDeleteProduct(id);
+  }
+
+
+
+  // ─── Render Helpers ─────────────────────────────────
 
   function renderProfileHeader() {
     return (
@@ -250,12 +287,7 @@ export default function ProfileScreen() {
               onPress={() => setActiveTab("streams")}
               activeOpacity={0.8}
             >
-              <Ionicons
-                name="videocam-outline"
-                size={16}
-                color={activeTab === "streams" ? theme.text : theme.textMuted}
-                style={styles.segmentIcon}
-              />
+              <Ionicons name="videocam-outline" size={16} color={activeTab === "streams" ? theme.text : theme.textMuted} style={styles.segmentIcon} />
               <Text style={[styles.segmentText, activeTab === "streams" && styles.segmentTextActive]}>Streams</Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -263,12 +295,7 @@ export default function ProfileScreen() {
               onPress={() => setActiveTab("products")}
               activeOpacity={0.8}
             >
-              <Ionicons
-                name="cube-outline"
-                size={16}
-                color={activeTab === "products" ? theme.text : theme.textMuted}
-                style={styles.segmentIcon}
-              />
+              <Ionicons name="cube-outline" size={16} color={activeTab === "products" ? theme.text : theme.textMuted} style={styles.segmentIcon} />
               <Text style={[styles.segmentText, activeTab === "products" && styles.segmentTextActive]}>Products</Text>
             </TouchableOpacity>
           </View>
@@ -278,9 +305,13 @@ export default function ProfileScreen() {
   }
 
   function renderProductCard({ item, index }: { item: Product; index: number }) {
-    const isLeft = index % 2 === 0;
     return (
-      <View style={[styles.gridCard, isLeft ? styles.gridCardLeft : styles.gridCardRight]}>
+      <TouchableOpacity
+        style={[styles.gridCard, deletingId === item.id && { opacity: 0.5 }]}
+        activeOpacity={0.8}
+        onLongPress={() => handleProductOptions(item)}
+        onPress={() => handleProductOptions(item)}
+      >
         <View style={styles.gridImageWrapper}>
           <ImageWithFallback
             uri={item.imageUrl}
@@ -298,13 +329,11 @@ export default function ProfileScreen() {
           <View style={styles.gridCardMeta}>
             <Text style={styles.gridCardMetaText}>Qty: {item.quantity}</Text>
             {item.sizes && item.sizes.length > 0 && (
-              <Text style={styles.gridCardMetaText} numberOfLines={1}>
-                {item.sizes.join(", ")}
-              </Text>
+              <Text style={styles.gridCardMetaText} numberOfLines={1}>{item.sizes.join(", ")}</Text>
             )}
           </View>
         </View>
-      </View>
+      </TouchableOpacity>
     );
   }
 
@@ -323,186 +352,186 @@ export default function ProfileScreen() {
       <View style={styles.emptyContent}>
         <Ionicons name="cube-outline" size={56} color={theme.textMuted} style={styles.emptyIcon} />
         <Text style={styles.emptyTitle}>No products yet</Text>
-        <Text style={styles.emptySubtitle}>Add products from the Products tab to see them here</Text>
+        <Text style={styles.emptySubtitle}>Tap + Product to add your first product</Text>
       </View>
     );
   }
 
-  const menuItems: MenuItem[] = [
-    { icon: "create-outline", label: "Edit Name", onPress: () => handleMenuAction("edit_name") },
-    { icon: "camera-outline", label: "Profile Picture", onPress: () => handleMenuAction("profile_picture") },
-    { icon: "information-circle-outline", label: "About", onPress: () => handleMenuAction("about") },
-    { icon: "call-outline", label: "Phone Number", onPress: () => handleMenuAction("phone") },
-    { icon: "heart-outline", label: "My Wishlist", onPress: () => handleMenuAction("wishlist") },
-    { icon: "log-out-outline", label: "Sign Out", onPress: () => handleMenuAction("signout"), danger: true },
-  ];
+  // ─── Modals ─────────────────────────────────────────
 
-  const listContent = (
+  const modals = (
     <>
       <Stack.Screen
         options={{
-          title: user?.name || "Profile",
+          headerTitle: "",
+          headerLeft: () => (
+            <Text style={{ fontSize: 24, fontWeight: "800", marginLeft: 16, color: theme.text }}>
+              Profile
+            </Text>
+          ),
           headerRight: () => (
             <View style={styles.headerRightRow}>
               <TouchableOpacity
                 style={styles.headerPill}
                 onPress={() => {
-                  if (activeTab === "streams") {
-                    Alert.alert("Create Stream", "Coming soon!");
+                  if (activeTab === "products") {
+                    openCreateProductModal();
                   } else {
-                    // Navigate to Products tab — or show create product modal
-                    Alert.alert("Add Product", "Go to the Products tab to add a product.");
+                    setShowCreateMenu(true);
                   }
                 }}
               >
                 <Ionicons name="add" size={18} color={theme.textOnAccent} />
-                <Text style={styles.headerPillText}>
-                  {activeTab === "streams" ? "Create" : "Product"}
-                </Text>
+                <Text style={styles.headerPillText}>{activeTab === "products" ? "Product" : "Create"}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.navAvatar} onPress={() => setShowMenu(true)}>
-                <Text style={styles.navAvatarText}>{user?.name?.charAt(0).toUpperCase() || "?"}</Text>
+                {user?.avatarUrl ? (
+                  <Image source={{ uri: user.avatarUrl }} style={{ width: 34, height: 34, borderRadius: 17 }} />
+                ) : (
+                  <Text style={styles.navAvatarText}>{user?.name?.charAt(0).toUpperCase() || "?"}</Text>
+                )}
               </TouchableOpacity>
             </View>
           ),
         }}
       />
 
-      {/* Menu Modal */}
-      <Modal visible={showMenu} transparent animationType="slide" onRequestClose={() => setShowMenu(false)}>
-        <View style={styles.menuOverlay}>
-          <TouchableOpacity
-            style={StyleSheet.absoluteFill}
-            activeOpacity={1}
-            onPress={() => setShowMenu(false)}
-          />
-          <View style={styles.menuSheet}>
-            <View style={styles.menuHandle} />
+      <ProfileMenuBottomSheet visible={showMenu} onClose={() => setShowMenu(false)} />
+      <CreateMenuBottomSheet 
+        visible={showCreateMenu} 
+        onClose={() => setShowCreateMenu(false)} 
+        onAction={(action) => {
+          if (action === "go_live") Alert.alert("Go Live", "Coming soon! Use the Home tab.");
+          if (action === "create_reel") Alert.alert("Create Reel", "Coming soon!");
+        }}
+      />
 
-            {/* Menu header with avatar */}
-            <View style={styles.menuHeader}>
-              <View style={styles.menuAvatar}>
-                <Text style={styles.menuAvatarText}>{user?.name?.charAt(0).toUpperCase() || "?"}</Text>
-              </View>
-              <View style={styles.menuHeaderInfo}>
-                <Text style={styles.menuHeaderName}>{user?.name}</Text>
-                <Text style={styles.menuHeaderEmail}>{user?.email}</Text>
-              </View>
-            </View>
+      {/* Product Create/Edit Modal */}
+      <Modal visible={showProductForm} transparent animationType="slide" onRequestClose={resetProductForm}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
+          <View style={styles.modalOverlay}>
+            <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={resetProductForm} />
+            <View style={[styles.formSheet, { maxHeight: "88%" }]}>
+              <ScrollView contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                <Text style={styles.formTitle}>{editingProduct ? "Edit Product" : "New Product"}</Text>
 
-            <View style={styles.menuDivider} />
+                <Text style={styles.label}>Name</Text>
+                <TextInput style={styles.input} placeholder="Enter product name" placeholderTextColor="#64748b" value={prodTitle} onChangeText={setProdTitle} />
 
-            {/* Menu items */}
-            {menuItems.map((item, index) => (
-              <View key={item.label}>
-                {item.danger && <View style={styles.menuDivider} />}
-                <TouchableOpacity
-                  style={styles.menuItem}
-                  onPress={item.onPress}
-                  activeOpacity={0.6}
-                >
-                  <Ionicons
-                    name={item.icon}
-                    size={22}
-                    color={item.danger ? theme.danger : theme.text}
-                    style={styles.menuItemIcon}
-                  />
-                  <Text style={[styles.menuItemLabel, item.danger && styles.menuItemLabelDanger]}>
-                    {item.label}
+                <Text style={styles.label}>Price (₹)</Text>
+                <TextInput style={styles.input} placeholder="₹0" placeholderTextColor="#64748b" value={prodPrice} onChangeText={setProdPrice} keyboardType="decimal-pad" />
+
+                <Text style={styles.label}>Quantity</Text>
+                <TextInput style={styles.input} placeholder="0" placeholderTextColor="#64748b" value={prodQuantity} onChangeText={setProdQuantity} keyboardType="number-pad" />
+
+                <Text style={styles.label}>Sizes</Text>
+                <View style={styles.sizeOptions}>
+                  {PRODUCT_SIZE_OPTIONS.map((size) => {
+                    const sel = prodSizes.includes(size);
+                    return (
+                      <TouchableOpacity key={size} style={[styles.sizeChip, sel && styles.sizeChipSelected]} onPress={() => toggleSize(size)}>
+                        <Text style={[styles.sizeChipText, sel && styles.sizeChipTextSelected]}>{size}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <Text style={styles.label}>Product Image</Text>
+                <TouchableOpacity style={styles.imagePickerBtn} onPress={handlePickProductImage}>
+                  <Text style={styles.imagePickerBtnText}>
+                    {prodImage ? "Change Image" : Platform.OS === "web" ? "Choose from Gallery" : "Camera or Gallery"}
                   </Text>
-                  {!item.danger && (
-                    <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />
-                  )}
                 </TouchableOpacity>
-              </View>
-            ))}
-          </View>
-        </View>
-      </Modal>
+                {prodImage && (
+                  <View style={styles.imagePreviewWrap}>
+                    <Image source={{ uri: prodImage.uri }} style={styles.imagePreview} />
+                    <TouchableOpacity style={styles.removeImageBtn} onPress={() => setProdImage(null)}>
+                      <Text style={styles.removeImageText}>Remove</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
 
-      {/* Edit Field Modal */}
-      <Modal
-        visible={editField !== null}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setEditField(null)}
-      >
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior="padding"
-          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
-        >
-          <View style={styles.menuOverlay}>
-            <TouchableOpacity
-              style={StyleSheet.absoluteFill}
-              activeOpacity={1}
-              onPress={() => setEditField(null)}
-            />
-            <View style={[styles.menuSheet, { paddingBottom: Platform.OS === "ios" ? 40 : 24 }]}>
-              <View style={styles.menuHandle} />
-              <Text style={styles.editModalTitle}>
-                {editField ? editFieldLabels[editField] : ""}
-              </Text>
-              <TextInput
-                style={[
-                  styles.editInput,
-                  editField === "bio" && { minHeight: 100, textAlignVertical: "top" },
-                ]}
-                value={editValue}
-                onChangeText={setEditValue}
-                placeholder={
-                  editField === "name"
-                    ? "Your name"
-                    : editField === "bio"
-                    ? "Tell people about yourself"
-                    : "Phone number"
-                }
-                placeholderTextColor={theme.textMuted}
-                autoFocus
-                multiline={editField === "bio"}
-                numberOfLines={editField === "bio" ? 4 : 1}
-                keyboardType={editField === "phone" ? "phone-pad" : "default"}
-              />
-              <View style={styles.editButtons}>
-                <TouchableOpacity
-                  style={styles.editCancelBtn}
-                  onPress={() => setEditField(null)}
-                >
-                  <Text style={styles.editCancelText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.editSaveBtn, saving && { opacity: 0.6 }]}
-                  onPress={handleSaveField}
-                  disabled={saving}
-                >
-                  {saving ? (
-                    <ActivityIndicator size="small" color={theme.textOnAccent} />
-                  ) : (
-                    <Text style={styles.editSaveText}>Save</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
+                <View style={styles.formButtons}>
+                  <TouchableOpacity style={styles.editCancelBtn} onPress={resetProductForm}>
+                    <Text style={styles.cancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.editSaveBtn, prodSaving && { opacity: 0.6 }]} onPress={handleSubmitProduct} disabled={prodSaving}>
+                    <Text style={styles.createText}>
+                      {prodSaving ? (editingProduct ? "Saving..." : "Adding...") : editingProduct ? "Save" : "Add Product"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
             </View>
           </View>
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Saving overlay */}
-      {saving && !editField && (
-        <View style={styles.savingOverlay}>
-          <ActivityIndicator size="large" color={theme.accent} />
-          <Text style={styles.savingText}>Uploading...</Text>
+      {/* Product Action Modal (Edit / Delete) */}
+      <Modal visible={Boolean(actionProduct)} transparent animationType="slide" onRequestClose={() => setActionProduct(null)}>
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setActionProduct(null)} />
+          <View style={styles.menuSheet}>
+            <View style={styles.menuHandle} />
+            {actionProduct && (
+              <View style={styles.actionSummary}>
+                <View style={{ width: "100%", height: 220, borderRadius: 12, backgroundColor: theme.surfaceAlt, overflow: "hidden", marginBottom: 16 }}>
+                  <ImageWithFallback 
+                    uri={actionProduct.imageUrl} 
+                    style={{ width: "100%", height: "100%" }}
+                    fallback={<View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}><Ionicons name="cube-outline" size={48} color={theme.textMuted} /></View>}
+                  />
+                </View>
+                <Text style={[styles.actionName, { fontSize: 20 }]} numberOfLines={2}>{actionProduct.title}</Text>
+                <Text style={[styles.actionPrice, { fontSize: 18, color: theme.accent, marginTop: 4 }]}>₹{actionProduct.price.toFixed(2)}</Text>
+                
+                <View style={{ flexDirection: "row", gap: 12, marginTop: 16 }}>
+                  <View style={{ flex: 1, backgroundColor: theme.surfaceAlt, padding: 12, borderRadius: 12 }}>
+                    <Text style={{ fontSize: 13, color: theme.textMuted, marginBottom: 4, fontWeight: "600" }}>Stock</Text>
+                    <Text style={{ fontSize: 16, fontWeight: "800", color: theme.text }}>{actionProduct.quantity} left</Text>
+                  </View>
+                  <View style={{ flex: 2, backgroundColor: theme.surfaceAlt, padding: 12, borderRadius: 12 }}>
+                    <Text style={{ fontSize: 13, color: theme.textMuted, marginBottom: 4, fontWeight: "600" }}>Available Sizes</Text>
+                    <Text style={{ fontSize: 16, fontWeight: "800", color: theme.text }} numberOfLines={1}>{actionProduct.sizes?.join(", ") || "Free Size"}</Text>
+                  </View>
+                </View>
+              </View>
+            )}
+            <View style={styles.actionButtons}>
+              <TouchableOpacity style={styles.actionPrimaryBtn} onPress={handleEditSelectedProduct}>
+                <Ionicons name="create-outline" size={18} color={theme.text} />
+                <Text style={styles.actionPrimaryText}>Edit</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.actionPrimaryBtn, styles.actionDeleteBtn, actionProduct && deletingId === actionProduct.id && { opacity: 0.6 }]}
+                onPress={() => void handleDeleteSelectedProduct()}
+                disabled={Boolean(actionProduct && deletingId === actionProduct.id)}
+              >
+                <Ionicons name="trash-outline" size={18} color="#fecaca" />
+                <Text style={styles.actionDeleteText}>
+                  {actionProduct && deletingId === actionProduct.id ? "Deleting..." : "Delete"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity style={styles.actionCancelBtn} onPress={() => setActionProduct(null)}>
+              <Text style={styles.cancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      )}
+      </Modal>
+
+
     </>
   );
 
-  if (activeTab === "products") {
-    return (
-      <View style={styles.container}>
-        {listContent}
+  // ─── Main Render ─────────────────────────────────────
+
+  return (
+    <View style={styles.container}>
+      {modals}
+      {activeTab === "products" ? (
         <FlatList
-          key="products-grid"
+          key="products-list-2-cols"
           data={products}
           keyExtractor={(item) => item.id}
           renderItem={renderProductCard}
@@ -513,120 +542,63 @@ export default function ProfileScreen() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.accent} />}
           ListEmptyComponent={renderProductsEmpty}
         />
-      </View>
-    );
-  }
-
-  // Streams tab — for now just an empty placeholder
-  return (
-    <View style={styles.container}>
-      {listContent}
-      <FlatList
-        key="streams-list"
-        data={[]}
-        keyExtractor={() => "empty"}
-        renderItem={() => null}
-        ListHeaderComponent={renderProfileHeader}
-        contentContainerStyle={styles.gridList}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.accent} />}
-        ListEmptyComponent={renderStreamsEmpty}
-      />
+      ) : (
+        <FlatList
+          key="streams-list-1-col"
+          data={[]}
+          keyExtractor={() => "empty"}
+          renderItem={() => null}
+          numColumns={1}
+          ListHeaderComponent={renderProfileHeader}
+          contentContainerStyle={styles.gridList}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.accent} />}
+          ListEmptyComponent={renderStreamsEmpty}
+        />
+      )}
     </View>
   );
 }
+
+// ─── Styles ───────────────────────────────────────────
 
 const createStyles = (theme: AppTheme) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.background },
 
-    // --- Header Right ---
-    headerRightRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 10,
-    },
+    // Header Right
+    headerRightRow: { flexDirection: "row", alignItems: "center", gap: 10 },
     headerPill: {
-      flexDirection: "row",
-      alignItems: "center",
-      backgroundColor: theme.accent,
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: 20,
-      gap: 4,
+      flexDirection: "row", alignItems: "center", backgroundColor: theme.accent,
+      paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, gap: 4,
     },
-    headerPillText: {
-      color: theme.textOnAccent,
-      fontWeight: "700",
-      fontSize: 14,
-    },
+    headerPillText: { color: theme.textOnAccent, fontWeight: "700", fontSize: 14 },
 
-    // --- Nav Avatar ---
+    // Nav Avatar
     navAvatar: {
-      width: 34,
-      height: 34,
-      borderRadius: 17,
-      backgroundColor: theme.accent,
-      justifyContent: "center",
-      alignItems: "center",
-      marginRight: 16,
+      width: 34, height: 34, borderRadius: 17, backgroundColor: theme.accent,
+      justifyContent: "center", alignItems: "center", marginRight: 16,
     },
-    navAvatarText: {
-      fontSize: 15,
-      fontWeight: "800",
-      color: theme.textOnAccent,
-    },
+    navAvatarText: { fontSize: 15, fontWeight: "800", color: theme.textOnAccent },
 
-    // --- Header / Profile Info ---
-    headerSection: {
-      alignItems: "center",
-      paddingTop: 12,
-      paddingBottom: 8,
-    },
+    // Profile Header
+    headerSection: { alignItems: "center", paddingTop: 12, paddingBottom: 8 },
 
-    // --- Stats Row ---
+    // Stats Row
     statsRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      marginTop: 4,
-      backgroundColor: theme.surface,
-      borderRadius: 14,
-      paddingVertical: 14,
-      paddingHorizontal: 20,
-      borderWidth: 1,
-      borderColor: theme.border,
+      flexDirection: "row", alignItems: "center", marginTop: 4, backgroundColor: theme.surface,
+      borderRadius: 14, paddingVertical: 14, paddingHorizontal: 20, borderWidth: 1, borderColor: theme.border,
     },
-    statItem: {
-      alignItems: "center",
-      flex: 1,
-    },
+    statItem: { alignItems: "center", flex: 1 },
     statValue: { fontSize: 20, fontWeight: "800", color: theme.text },
     statLabel: { fontSize: 12, color: theme.textMuted, marginTop: 2, fontWeight: "500" },
-    statDivider: {
-      width: 1,
-      height: 28,
-      backgroundColor: theme.border,
-    },
+    statDivider: { width: 1, height: 28, backgroundColor: theme.border },
 
-    // --- Segmented Control ---
-    segmentedWrapper: {
-      width: "100%",
-      paddingHorizontal: 16,
-      marginTop: 24,
-      marginBottom: 4,
-    },
-    segmentedControl: {
-      flexDirection: "row",
-      backgroundColor: theme.surfaceAlt,
-      borderRadius: 12,
-      padding: 3,
-    },
+    // Segmented Control
+    segmentedWrapper: { width: "100%", paddingHorizontal: 16, marginTop: 24, marginBottom: 4 },
+    segmentedControl: { flexDirection: "row", backgroundColor: theme.surfaceAlt, borderRadius: 12, padding: 3 },
     segmentTab: {
-      flex: 1,
-      flexDirection: "row",
-      paddingVertical: 9,
-      borderRadius: 10,
-      alignItems: "center",
-      justifyContent: "center",
+      flex: 1, flexDirection: "row", paddingVertical: 9, borderRadius: 10,
+      alignItems: "center", justifyContent: "center",
     },
     segmentTabActive: {
       backgroundColor: theme.surface,
@@ -634,251 +606,129 @@ const createStyles = (theme: AppTheme) =>
         ? { shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 3 }
         : { elevation: 2 }),
     },
-    segmentIcon: {
-      marginRight: 6,
-    },
-    segmentText: {
-      fontSize: 14,
-      fontWeight: "600",
-      color: theme.textMuted,
-    },
-    segmentTextActive: {
-      color: theme.text,
-      fontWeight: "700",
-    },
+    segmentIcon: { marginRight: 6 },
+    segmentText: { fontSize: 14, fontWeight: "600", color: theme.textMuted },
+    segmentTextActive: { color: theme.text, fontWeight: "700" },
 
-    // --- Menu Modal ---
-    menuOverlay: {
-      flex: 1,
-      justifyContent: "flex-end",
-    },
+    // Modal overlay
+    modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" },
+
+    // Menu Sheet
     menuSheet: {
-      backgroundColor: theme.surface,
-      borderTopLeftRadius: 28,
-      borderTopRightRadius: 28,
-      paddingTop: 10,
-      paddingBottom: Platform.OS === "ios" ? 40 : 24,
-      borderWidth: 1,
-      borderBottomWidth: 0,
-      borderColor: theme.border,
+      backgroundColor: theme.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28,
+      paddingTop: 10, paddingBottom: Platform.OS === "ios" ? 40 : 24,
+      borderWidth: 1, borderBottomWidth: 0, borderColor: theme.border,
       ...Platform.select({
-        ios: {
-          shadowColor: "#000",
-          shadowOffset: { width: 0, height: -6 },
-          shadowOpacity: 0.15,
-          shadowRadius: 20,
-        },
+        ios: { shadowColor: "#000", shadowOffset: { width: 0, height: -6 }, shadowOpacity: 0.15, shadowRadius: 20 },
         android: { elevation: 24 },
       }),
     },
-    menuHandle: {
-      alignSelf: "center",
-      width: 42,
-      height: 5,
-      borderRadius: 3,
-      backgroundColor: theme.border,
-      marginBottom: 16,
-    },
-    menuHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      paddingHorizontal: 24,
-      paddingBottom: 16,
-    },
+    menuHandle: { alignSelf: "center", width: 42, height: 5, borderRadius: 3, backgroundColor: theme.border, marginBottom: 16 },
+    menuHeader: { flexDirection: "row", alignItems: "center", paddingHorizontal: 24, paddingBottom: 16 },
     menuAvatar: {
-      width: 52,
-      height: 52,
-      borderRadius: 26,
-      backgroundColor: theme.accent,
-      justifyContent: "center",
-      alignItems: "center",
+      width: 52, height: 52, borderRadius: 26, backgroundColor: theme.accent,
+      justifyContent: "center", alignItems: "center",
     },
-    menuAvatarText: {
-      fontSize: 22,
-      fontWeight: "800",
-      color: theme.textOnAccent,
-    },
-    menuHeaderInfo: {
-      marginLeft: 14,
-      flex: 1,
-    },
-    menuHeaderName: {
-      fontSize: 18,
-      fontWeight: "700",
-      color: theme.text,
-    },
-    menuHeaderEmail: {
-      fontSize: 13,
-      color: theme.textMuted,
-      marginTop: 2,
-    },
-    menuDivider: {
-      height: 1,
-      backgroundColor: theme.border,
-      marginHorizontal: 24,
-      marginVertical: 4,
-    },
-    menuItem: {
-      flexDirection: "row",
-      alignItems: "center",
-      paddingVertical: 14,
-      paddingHorizontal: 24,
-    },
-    menuItemIcon: {
-      width: 28,
-    },
-    menuItemLabel: {
-      flex: 1,
-      fontSize: 16,
-      fontWeight: "600",
-      color: theme.text,
-      marginLeft: 8,
-    },
-    menuItemLabelDanger: {
-      color: theme.danger,
-    },
+    menuAvatarText: { fontSize: 22, fontWeight: "800", color: theme.textOnAccent },
+    menuHeaderInfo: { marginLeft: 14, flex: 1 },
+    menuHeaderName: { fontSize: 18, fontWeight: "700", color: theme.text },
+    menuHeaderEmail: { fontSize: 13, color: theme.textMuted, marginTop: 2 },
+    menuDivider: { height: 1, backgroundColor: theme.border, marginHorizontal: 24, marginVertical: 4 },
+    menuItem: { flexDirection: "row", alignItems: "center", paddingVertical: 14, paddingHorizontal: 24 },
+    menuItemIcon: { width: 28 },
+    menuItemLabel: { flex: 1, fontSize: 16, fontWeight: "600", color: theme.text, marginLeft: 8 },
+    menuItemLabelDanger: { color: theme.danger },
 
-    // --- Grid List ---
-    gridList: {
-      paddingHorizontal: GRID_PADDING,
-      paddingBottom: 100,
-    },
-    gridRow: {
-      justifyContent: "space-between",
-      marginBottom: GRID_GAP,
-    },
-    gridCard: {
-      width: CARD_WIDTH,
-      backgroundColor: theme.surface,
-      borderRadius: 14,
-      overflow: "hidden",
-    },
-    gridCardLeft: {},
-    gridCardRight: {},
-    gridImageWrapper: {
-      width: "100%",
-      height: CARD_WIDTH,
-      backgroundColor: theme.surfaceAlt,
-    },
-    gridImage: {
-      width: "100%",
-      height: "100%",
-    },
-    gridImagePlaceholder: {
-      width: "100%",
-      height: "100%",
-      justifyContent: "center",
-      alignItems: "center",
-    },
-    gridCardInfo: {
-      padding: 10,
-    },
-    gridCardTitle: {
-      fontSize: 14,
-      fontWeight: "600",
-      color: theme.text,
-    },
-    gridCardPrice: {
-      fontSize: 15,
-      fontWeight: "800",
-      color: theme.accent,
-      marginTop: 3,
-    },
-    gridCardMeta: {
-      flexDirection: "row",
-      gap: 8,
-      marginTop: 4,
-      flexWrap: "wrap",
-    },
-    gridCardMetaText: {
-      fontSize: 11,
-      color: theme.textMuted,
-      fontWeight: "500",
-    },
-
-    // --- Empty States ---
-    emptyContent: {
-      alignItems: "center",
-      paddingTop: 48,
-      paddingHorizontal: 32,
-    },
-    emptyIcon: {
-      marginBottom: 16,
-    },
-    emptyTitle: {
-      fontSize: 18,
-      fontWeight: "700",
-      color: theme.text,
-    },
-    emptySubtitle: {
-      fontSize: 14,
-      color: theme.textMuted,
-      marginTop: 4,
-      textAlign: "center",
-    },
-
-    // --- Edit Modal ---
-    editModalTitle: {
-      fontSize: 20,
-      fontWeight: "700",
-      color: theme.text,
-      marginBottom: 16,
-      paddingHorizontal: 24,
-    },
+    // Edit Field Modal
+    editModalTitle: { fontSize: 20, fontWeight: "700", color: theme.text, marginBottom: 16, paddingHorizontal: 24 },
     editInput: {
-      backgroundColor: theme.background,
-      borderRadius: 12,
-      padding: 16,
-      fontSize: 16,
-      color: theme.text,
-      borderWidth: 1,
-      borderColor: theme.border,
-      marginHorizontal: 24,
-      minHeight: 50,
+      backgroundColor: theme.background, borderRadius: 12, padding: 16, fontSize: 16,
+      color: theme.text, borderWidth: 1, borderColor: theme.border, marginHorizontal: 24, minHeight: 50,
     },
-    editButtons: {
-      flexDirection: "row",
-      marginTop: 20,
-      paddingHorizontal: 24,
-      gap: 12,
+    editButtons: { flexDirection: "row", marginTop: 20, paddingHorizontal: 24, gap: 12 },
+    editCancelBtn: { flex: 1, padding: 16, borderRadius: 12, backgroundColor: theme.surfaceAlt, alignItems: "center" },
+    editSaveBtn: { flex: 1, padding: 16, borderRadius: 12, backgroundColor: theme.accent, alignItems: "center" },
+
+    // Product Form Modal
+    formSheet: {
+      backgroundColor: theme.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28,
+      paddingTop: 10, paddingBottom: Platform.OS === "ios" ? 40 : 24,
+      borderWidth: 1, borderBottomWidth: 0, borderColor: theme.border,
     },
-    editCancelBtn: {
-      flex: 1,
-      padding: 16,
-      borderRadius: 12,
-      backgroundColor: theme.surfaceAlt,
-      alignItems: "center",
+    formScrollContent: { paddingHorizontal: 24, paddingBottom: 8 },
+    formTitle: { fontSize: 22, fontWeight: "700", color: theme.text, marginBottom: 12, marginTop: 8 },
+    formButtons: { flexDirection: "row", marginTop: 24, gap: 12 },
+    label: { fontSize: 14, fontWeight: "600", color: theme.textMuted, marginBottom: 6, marginTop: 14 },
+    input: {
+      backgroundColor: theme.background, borderRadius: 12, padding: 16, fontSize: 16,
+      color: theme.text, borderWidth: 1, borderColor: theme.border,
     },
-    editCancelText: {
-      color: theme.textMuted,
-      fontWeight: "600",
-      fontSize: 16,
+    sizeOptions: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 10 },
+    sizeChip: {
+      paddingHorizontal: 14, paddingVertical: 10, borderRadius: 999,
+      backgroundColor: theme.surfaceAlt, borderWidth: 1, borderColor: theme.border,
     },
-    editSaveBtn: {
-      flex: 1,
-      padding: 16,
-      borderRadius: 12,
-      backgroundColor: theme.accent,
-      alignItems: "center",
+    sizeChipSelected: { backgroundColor: theme.accent, borderColor: theme.accent },
+    sizeChipText: { color: theme.text, fontWeight: "600", fontSize: 13 },
+    sizeChipTextSelected: { color: theme.textOnAccent },
+    imagePickerBtn: { marginTop: 10, backgroundColor: theme.surfaceAlt, borderRadius: 10, paddingVertical: 12, alignItems: "center" },
+    imagePickerBtnText: { color: theme.text, fontWeight: "600", fontSize: 14 },
+    imagePreviewWrap: {
+      marginTop: 10, flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+      backgroundColor: theme.background, borderRadius: 12, padding: 10, borderWidth: 1, borderColor: theme.border,
     },
-    editSaveText: {
-      color: theme.textOnAccent,
-      fontWeight: "700",
-      fontSize: 16,
+    imagePreview: { width: 54, height: 54, borderRadius: 10 },
+    removeImageBtn: { backgroundColor: "#7f1d1d", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
+    removeImageText: { color: "#fecaca", fontWeight: "700", fontSize: 12 },
+
+    // Action Modal
+    actionSummary: {
+      backgroundColor: theme.background, borderRadius: 16, padding: 16,
+      borderWidth: 1, borderColor: theme.border, marginHorizontal: 24, marginBottom: 18,
+    },
+    actionName: { fontSize: 18, fontWeight: "700", color: theme.text },
+    actionPrice: { fontSize: 15, color: theme.textMuted, fontWeight: "700", marginTop: 6 },
+    actionMeta: { fontSize: 13, color: theme.textMuted, marginTop: 4 },
+    actionButtons: { gap: 12, paddingHorizontal: 24 },
+    actionPrimaryBtn: {
+      backgroundColor: theme.surfaceAlt, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 16,
+      flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10,
+    },
+    actionPrimaryText: { color: theme.text, fontWeight: "700", fontSize: 16 },
+    actionDeleteBtn: { backgroundColor: "#7f1d1d" },
+    actionDeleteText: { color: "#fecaca", fontWeight: "700", fontSize: 16 },
+    actionCancelBtn: {
+      marginTop: 14, paddingVertical: 14, borderRadius: 12,
+      backgroundColor: theme.surfaceAlt, alignItems: "center", marginHorizontal: 24,
     },
 
-    // --- Saving Overlay ---
+    // Common text
+    cancelText: { color: theme.textMuted, fontWeight: "600", fontSize: 16 },
+    createText: { color: theme.textOnAccent, fontWeight: "700", fontSize: 16 },
+
+    // Grid
+    gridList: { paddingHorizontal: GRID_PADDING, paddingBottom: 100 },
+    gridRow: { justifyContent: "space-between", marginBottom: GRID_GAP },
+    gridCard: { width: CARD_WIDTH, backgroundColor: theme.surface, borderRadius: 14, overflow: "hidden" },
+    gridImageWrapper: { width: "100%", height: CARD_WIDTH, backgroundColor: theme.surfaceAlt },
+    gridImage: { width: "100%", height: "100%" },
+    gridImagePlaceholder: { width: "100%", height: "100%", justifyContent: "center", alignItems: "center" },
+    gridCardInfo: { padding: 10 },
+    gridCardTitle: { fontSize: 14, fontWeight: "600", color: theme.text },
+    gridCardPrice: { fontSize: 15, fontWeight: "800", color: theme.accent, marginTop: 3 },
+    gridCardMeta: { flexDirection: "row", gap: 8, marginTop: 4, flexWrap: "wrap" },
+    gridCardMetaText: { fontSize: 11, color: theme.textMuted, fontWeight: "500" },
+
+    // Empty States
+    emptyContent: { alignItems: "center", paddingTop: 48, paddingHorizontal: 32 },
+    emptyIcon: { marginBottom: 16 },
+    emptyTitle: { fontSize: 18, fontWeight: "700", color: theme.text },
+    emptySubtitle: { fontSize: 14, color: theme.textMuted, marginTop: 4, textAlign: "center" },
+
+    // Saving Overlay
     savingOverlay: {
-      ...StyleSheet.absoluteFillObject,
-      backgroundColor: "rgba(0,0,0,0.5)",
-      justifyContent: "center",
-      alignItems: "center",
-      zIndex: 999,
+      ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.5)",
+      justifyContent: "center", alignItems: "center", zIndex: 999,
     },
-    savingText: {
-      color: "#fff",
-      fontSize: 16,
-      fontWeight: "600",
-      marginTop: 12,
-    },
+    savingText: { color: "#fff", fontSize: 16, fontWeight: "600", marginTop: 12 },
   });

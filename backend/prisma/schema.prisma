@@ -27,6 +27,8 @@ model User {
   followers Follow[] @relation("following") // users who follow this user
   following Follow[] @relation("follower")  // users this user follows
 
+  wishlist Wishlist[]
+
   @@map("users")
 }
 
@@ -65,6 +67,7 @@ model Product {
   owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
   sessionProducts SessionProduct[]
+  wishlistedBy    Wishlist[]
 
   @@map("products")
 }
@@ -122,3 +125,20 @@ model Message {
 
   @@map("messages")
 }
+
+model Wishlist {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@index([userId])
+  @@index([productId])
+  @@map("wishlists")
+}
+
