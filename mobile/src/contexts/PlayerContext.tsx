@@ -16,7 +16,8 @@ interface PlayerContextType {
   isMinimized: boolean;
   lkToken: string | null;
   lkUrl: string | null;
-  openPlayer: (session: LiveSession, token: string | null, url: string | null, minimized?: boolean) => void;
+  isHost: boolean;
+  openPlayer: (session: LiveSession, token: string | null, url: string | null, minimized?: boolean, isHost?: boolean) => void;
   minimizePlayer: () => void;
   expandPlayer: () => void;
   closePlayer: () => void;
@@ -29,6 +30,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [isMinimized, setIsMinimized] = useState(false);
   const [lkToken, setLkToken] = useState<string | null>(null);
   const [lkUrl, setLkUrl] = useState<string | null>(null);
+  const [isHost, setIsHost] = useState(false);
   const streamEndedCleanupRef = useRef<(() => void) | null>(null);
 
   const detachStreamEndedListener = useCallback(() => {
@@ -43,6 +45,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setIsMinimized(false);
     setLkToken(null);
     setLkUrl(null);
+    setIsHost(false);
     disconnectSocket();
   }, [detachStreamEndedListener]);
 
@@ -75,12 +78,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     [closePlayer, detachStreamEndedListener, notifyLiveEnded]
   );
 
-  const openPlayer = useCallback((session: LiveSession, token: string | null, url: string | null, minimized: boolean = false) => {
-    console.log("PlayerContext: openPlayer", session.id, "minimized:", minimized);
+  const openPlayer = useCallback((session: LiveSession, token: string | null, url: string | null, minimized: boolean = false, isHost: boolean = false) => {
+    console.log("PlayerContext: openPlayer", session.id, "minimized:", minimized, "isHost:", isHost);
     setActiveSession(session);
     setLkToken(token);
     setLkUrl(url);
     setIsMinimized(minimized);
+    setIsHost(isHost);
     attachStreamEndedListener(session.id);
   }, [attachStreamEndedListener]);
 
@@ -112,6 +116,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         isMinimized,
         lkToken,
         lkUrl,
+        isHost,
         openPlayer,
         minimizePlayer,
         expandPlayer,

@@ -14,7 +14,7 @@ import {
   FlatList,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Socket } from "socket.io-client";
 import { Ionicons } from "@expo/vector-icons";
 import { apiClient } from "../../src/api/client";
@@ -25,6 +25,7 @@ import HostControls from "../../src/components/HostControls";
 import ImageWithFallback from "../../src/components/ImageWithFallback";
 import { LiveSession, Product, Message, ApiResponse } from "../../src/types";
 import { AppTheme, useAppTheme } from "../../src/theme";
+import { usePlayer } from "../../src/contexts/PlayerContext";
 
 interface ProductListResponse {
   products: Product[];
@@ -75,11 +76,20 @@ export default function HostScreen() {
   const [isCameraOn, setIsCameraOn] = useState(true);
   const [isMicOn, setIsMicOn] = useState(true);
   const [isFrontCamera, setIsFrontCamera] = useState(true);
+  const [isImmersiveMode, setIsImmersiveMode] = useState(true);
 
   const theme = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
+  const insets = useSafeAreaInsets();
+  const { openPlayer } = usePlayer();
+  const isMinimizing = useRef(false);
 
   function handleBack() {
+    if (session) {
+      isMinimizing.current = true;
+      openPlayer(session, lkToken, lkUrl, true, true);
+    }
+    
     if (router.canGoBack()) {
       router.back();
       return;
@@ -98,11 +108,13 @@ export default function HostScreen() {
       socketCleanupRef.current?.();
       socketCleanupRef.current = null;
 
-      if (socketRef.current) {
-        socketRef.current.emit("host_stream_ended", { sessionId });
-        socketRef.current.emit("leave_live", sessionId);
+      if (!isMinimizing.current) {
+        if (socketRef.current) {
+          socketRef.current.emit("host_stream_ended", { sessionId });
+          socketRef.current.emit("leave_live", sessionId);
+        }
+        disconnectSocket();
       }
-      disconnectSocket();
     };
   }, [sessionId]);
 
@@ -331,88 +343,131 @@ export default function HostScreen() {
   const streamType = (session?.streamType as "mock" | "livekit") || "livekit";
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
+      {isImmersiveMode && (
+        <View style={StyleSheet.absoluteFill}>
+          <VideoPlayer
+            streamType={streamType}
+            streamUrl={session?.streamUrl}
+            livekitToken={lkToken}
+            livekitUrl={lkUrl}
+            isHost={true}
+            isCameraEnabled={isCameraOn}
+            isMicrophoneEnabled={isMicOn}
+            cameraFacingMode={isFrontCamera ? "user" : "environment"}
+            onConnectionChange={handleConnectionChange}
+            onParticipantCountChange={handleParticipantCount}
+            isFullscreen={true}
+          />
+        </View>
+      )}
+
       <KeyboardAvoidingView
-        style={styles.container}
+        style={styles.keyboardView}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
-        <FlatList
-          style={styles.container}
-          inverted
-          data={messages}
-          keyExtractor={(item) => item.id}
-          ListFooterComponent={
-            <View onStartShouldSetResponder={() => true}>
-              <View style={styles.topBar}>
-                <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-                  <Ionicons name="arrow-back" size={18} color={theme.textMuted} />
-                  <Text style={styles.backText}>Back</Text>
-                </TouchableOpacity>
-                <View style={styles.topBarRight}>
-                  <TouchableOpacity
-                    style={[styles.productsHeaderButton, showProductsSheet && styles.productsHeaderButtonActive]}
-                    onPress={() => setShowProductsSheet((value) => !value)}
-                  >
-                    <Ionicons
-                      name="cube-outline"
-                      size={18}
-                      color={showProductsSheet ? theme.textOnAccent : theme.text}
-                    />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.endButton, endingSession && { opacity: 0.7 }]}
-                    onPress={handleEndSession}
-                    disabled={endingSession}
-                  >
-                    <Text style={styles.endButtonText}>{endingSession ? "Ending..." : "End Live"}</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              <View style={styles.videoSection}>
-                <VideoPlayer
-                  streamType={streamType}
-                  streamUrl={session?.streamUrl}
-                  livekitToken={lkToken}
-                  livekitUrl={lkUrl}
-                  isHost={true}
-                  isCameraEnabled={isCameraOn}
-                  isMicrophoneEnabled={isMicOn}
-                  cameraFacingMode={isFrontCamera ? "user" : "environment"}
-                  onConnectionChange={handleConnectionChange}
-                  onParticipantCountChange={handleParticipantCount}
-                />
-              </View>
-
-              <HostControls
-                isCameraOn={isCameraOn}
-                isMicOn={isMicOn}
-                isFrontCamera={isFrontCamera}
-                onToggleCamera={() => setIsCameraOn((v) => !v)}
-                onToggleMic={() => setIsMicOn((v) => !v)}
-                onFlipCamera={() => setIsFrontCamera((v) => !v)}
-                onAiInsights={() => void handleGenerateAiInsights()}
-                aiLoading={aiInsightsLoading}
+        <View style={[styles.topBar, { paddingTop: Math.max(insets.top, 16) }]}>
+          <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={18} color={isImmersiveMode ? "#fff" : theme.textMuted} />
+            <Text style={[styles.backText, isImmersiveMode && styles.textShadow]}>Back</Text>
+          </TouchableOpacity>
+          <View style={styles.topBarRight}>
+            <TouchableOpacity
+              style={[styles.headerIconButton, isImmersiveMode && styles.immersiveHeaderButton, { borderRadius: 19, width: 38, height: 38, alignItems: 'center', justifyContent: 'center' }]}
+              onPress={() => setIsImmersiveMode((v) => !v)}
+            >
+              <Ionicons
+                name={isImmersiveMode ? "contract" : "expand"}
+                size={22}
+                color={isImmersiveMode ? "#fff" : theme.text}
               />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.productsHeaderButton,
+                showProductsSheet && styles.productsHeaderButtonActive,
+                isImmersiveMode && !showProductsSheet && styles.immersiveHeaderButton
+              ]}
+              onPress={() => setShowProductsSheet((value) => !value)}
+            >
+              <Ionicons
+                name="cube-outline"
+                size={18}
+                color={showProductsSheet ? theme.textOnAccent : (isImmersiveMode ? "#fff" : theme.text)}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.endButton, endingSession && { opacity: 0.7 }]}
+              onPress={handleEndSession}
+              disabled={endingSession}
+            >
+              <Text style={styles.endButtonText}>{endingSession ? "Ending..." : "End Live"}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
 
-              <View style={styles.statsRow}>
-                <View style={styles.statItem}>
-                  <Text style={styles.statValue}>{viewerCount}</Text>
-                  <Text style={styles.statLabel}>Viewers</Text>
-                </View>
-                <View style={styles.statItem}>
-                  <Text style={styles.statValue}>{reactionCount}</Text>
-                  <Text style={styles.statLabel}>Reactions</Text>
-                </View>
-                <View style={styles.statItem}>
-                  <Text style={styles.statValue}>{messages.filter((m) => m.type === "question").length}</Text>
-                  <Text style={styles.statLabel}>Questions</Text>
-                </View>
-              </View>
+        {!isImmersiveMode && (
+          <View style={styles.videoSection}>
+            <VideoPlayer
+              streamType={streamType}
+              streamUrl={session?.streamUrl}
+              livekitToken={lkToken}
+              livekitUrl={lkUrl}
+              isHost={true}
+              isCameraEnabled={isCameraOn}
+              isMicrophoneEnabled={isMicOn}
+              cameraFacingMode={isFrontCamera ? "user" : "environment"}
+              onConnectionChange={handleConnectionChange}
+              onParticipantCountChange={handleParticipantCount}
+            />
+          </View>
+        )}
 
-              <Text style={styles.sectionTitle}>Live Chat</Text>
+        {!isImmersiveMode && (
+          <HostControls
+            isCameraOn={isCameraOn}
+            isMicOn={isMicOn}
+            isFrontCamera={isFrontCamera}
+            onToggleCamera={() => setIsCameraOn((v) => !v)}
+            onToggleMic={() => setIsMicOn((v) => !v)}
+            onFlipCamera={() => setIsFrontCamera((v) => !v)}
+            onAiInsights={() => void handleGenerateAiInsights()}
+            aiLoading={aiInsightsLoading}
+          />
+        )}
+
+        {!isImmersiveMode && (
+          <View style={styles.statsRow}>
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{viewerCount}</Text>
+              <Text style={styles.statLabel}>Viewers</Text>
             </View>
-          }
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{reactionCount}</Text>
+              <Text style={styles.statLabel}>Reactions</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{messages.filter((m) => m.type === "question").length}</Text>
+              <Text style={styles.statLabel}>Questions</Text>
+            </View>
+          </View>
+        )}
+
+        <View style={[styles.mainContentArea, isImmersiveMode && styles.mainContentAreaImmersive]} pointerEvents="box-none">
+          <View style={[styles.chatAreaWrapper, isImmersiveMode && styles.chatAreaWrapperImmersive]} pointerEvents="box-none">
+            {!isImmersiveMode && <Text style={styles.sectionTitle}>Live Chat</Text>}
+            <FlatList
+              style={styles.chatList}
+              contentContainerStyle={isImmersiveMode ? styles.chatListContentImmersive : styles.chatListContent}
+              inverted
+              showsVerticalScrollIndicator={false}
+              data={messages}
+              keyExtractor={(item) => item.id}
+              ListEmptyComponent={
+                <Text style={[styles.noMessages, isImmersiveMode && styles.textShadow]}>
+                   No messages yet
+                </Text>
+              }
           renderItem={({ item: msg }) => (
             <View key={msg.id} style={styles.messageRow}>
               <Ionicons
@@ -434,11 +489,11 @@ export default function HostScreen() {
                 style={styles.messageBadge}
               />
               <View style={styles.messageContent}>
-                <Text style={styles.messageSender}>{msg.user.name}</Text>
-                <Text style={styles.messageText}>{msg.content}</Text>
+                <Text style={[styles.messageSender, isImmersiveMode && styles.textShadow]}>{msg.user.name}</Text>
+                <Text style={[styles.messageText, isImmersiveMode && styles.textShadow]}>{msg.content}</Text>
                 {msg.type === "question" && (
                   <TouchableOpacity
-                    style={[styles.aiReplyButton, aiReplyLoadingId === msg.id && { opacity: 0.7 }]}
+                    style={[styles.aiReplyButton, isImmersiveMode && styles.aiReplyButtonImmersive, aiReplyLoadingId === msg.id && { opacity: 0.7 }]}
                     onPress={() => void handleGenerateAiReply(msg)}
                     disabled={aiReplyLoadingId === msg.id}
                   >
@@ -451,20 +506,33 @@ export default function HostScreen() {
               </View>
             </View>
           )}
-          ListEmptyComponent={
-            <Text style={styles.noMessages}>No messages yet</Text>
-          }
         />
+      </View>
+        {isImmersiveMode && (
+          <View style={styles.immersiveSideControls} pointerEvents="box-none">
+            <HostControls
+              layout="column"
+              isCameraOn={isCameraOn}
+              isMicOn={isMicOn}
+              isFrontCamera={isFrontCamera}
+              onToggleCamera={() => setIsCameraOn((v) => !v)}
+              onToggleMic={() => setIsMicOn((v) => !v)}
+              onFlipCamera={() => setIsFrontCamera((v) => !v)}
+              onAiInsights={() => void handleGenerateAiInsights()}
+              aiLoading={aiInsightsLoading}
+            />
+          </View>
+        )}
+    </View>
 
-        <View style={styles.commentBarWrapper}>
-          {replyingToName && (
-            <View style={styles.replyingToHeader}>
-              <Text style={styles.replyingToText}>Replying to {replyingToName}</Text>
-              <TouchableOpacity onPress={() => setReplyingToName(null)}>
-                <Ionicons name="close-circle" size={16} color={theme.textMuted} />
-              </TouchableOpacity>
-            </View>
-          )}
+      <View
+        style={[
+          styles.commentBarWrapper,
+          isImmersiveMode && styles.commentBarWrapperImmersive,
+          { paddingBottom: isImmersiveMode ? Math.max(insets.bottom, 16) : Math.max(insets.bottom, 8) }
+        ]}
+      >
+
           <View style={styles.inputRow}>
             <TextInput
               style={styles.commentInput}
@@ -606,19 +674,64 @@ export default function HostScreen() {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const createStyles = (theme: AppTheme) =>
   StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.background },
+  keyboardView: { flex: 1 },
+  mainContentArea: {
+    flex: 1,
+    flexDirection: "row",
+  },
+  mainContentAreaImmersive: {
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+  },
+  chatAreaWrapper: {
+    flex: 1,
+  },
+  chatAreaWrapperImmersive: {
+    maxHeight: 280,
+    flex: 0,
+    width: "55%",
+    alignSelf: "flex-end",
+  },
+  chatList: {
+    flex: 1,
+  },
+  chatListContent: {
+    paddingBottom: 16,
+  },
+  chatListContentImmersive: {
+    paddingBottom: 24,
+    paddingLeft: 0,
+    paddingRight: 8,
+  },
+  immersiveSideControls: {
+    justifyContent: "flex-end",
+    paddingBottom: 24,
+    paddingRight: 8,
+    width: 80,
+  },
+  textShadow: {
+    color: "#fff",
+    textShadowColor: "rgba(0,0,0,0.7)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  headerIconButton: {
+    padding: 6,
+  },
   scroll: { flex: 1 },
   topBar: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
   },
   topBarRight: {
     flexDirection: "row",
@@ -632,10 +745,18 @@ const createStyles = (theme: AppTheme) =>
     height: 38,
     borderRadius: 19,
     backgroundColor: theme.surface,
+    paddingVertical: 8,
     borderWidth: 1,
     borderColor: theme.border,
     alignItems: "center",
     justifyContent: "center",
+  },
+  immersiveHeaderButton: {
+    backgroundColor: "rgba(0,0,0,0.3)",
+    borderColor: "rgba(255,255,255,0.2)",
+  },
+  commentBarWrapperImmersive: {
+    backgroundColor: "transparent",
   },
   productsHeaderButtonActive: {
     backgroundColor: theme.accent,
@@ -774,6 +895,10 @@ const createStyles = (theme: AppTheme) =>
     borderColor: theme.border,
     paddingHorizontal: 10,
     paddingVertical: 6,
+  },
+  aiReplyButtonImmersive: {
+    backgroundColor: "rgba(0,0,0,0.5)",
+    borderColor: "rgba(255,255,255,0.2)",
   },
   aiReplyButtonText: { color: theme.accent, fontSize: 12, fontWeight: "700" },
   commentBarWrapper: {

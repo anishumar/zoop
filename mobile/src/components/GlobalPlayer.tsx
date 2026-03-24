@@ -1,15 +1,16 @@
-import React, { useMemo, useState, useEffect } from "react";
-import { View, StyleSheet, Dimensions, Platform, Keyboard } from "react-native";
-import { useSegments } from "expo-router";
+import React, { useState, useEffect } from "react";
+import { View, StyleSheet, Dimensions, Platform, Keyboard, TouchableOpacity } from "react-native";
+import { useSegments, useRouter } from "expo-router";
 import { usePlayer } from "../contexts/PlayerContext";
 import VideoPlayer from "./VideoPlayer";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-const { width, height: screenHeight } = Dimensions.get("window");
+const { width } = Dimensions.get("window");
 
 export default function GlobalPlayer() {
-  const { activeSession, isMinimized, lkToken, lkUrl } = usePlayer();
+  const { activeSession, isMinimized, lkToken, lkUrl, isHost } = usePlayer();
   const segments = useSegments();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const [keyboardVisible, setKeyboardVisible] = useState(false);
 
@@ -24,18 +25,25 @@ export default function GlobalPlayer() {
   }, []);
 
   const isCurrentScreenViewer = segments[0] === "viewer";
+  const isCurrentScreenHost = segments[0] === "host";
+  
+  if (!activeSession || isCurrentScreenHost) return null;
 
   // Mode:
   // 1. Expanded (Full Screen on Viewer Screen)
   // 2. Minimized (Small floating window)
   
-  if (!activeSession) return null;
-
   // We should only show in "Expanded" mode if we are actually on the viewer screen.
   // Otherwise, if we aren't on the viewer screen but it's not minimized, we should probably minimize it.
   const mode = isCurrentScreenViewer && !isMinimized ? "expanded" : "minimized";
 
   if (mode === "minimized" && keyboardVisible) return null;
+
+  const handleExpand = () => {
+    if (!activeSession) return;
+    const route = isHost ? `/host/${activeSession.id}` : `/viewer/${activeSession.id}`;
+    router.push(route as any);
+  };
 
   const streamType = (activeSession.streamType as "mock" | "livekit") || "livekit";
 
@@ -51,20 +59,27 @@ export default function GlobalPlayer() {
     left: 8,
     width: 120,
     height: 76,
-    borderRadius: 8,
+    borderTopLeftRadius: 12,
+    borderBottomLeftRadius: 12,
+    borderTopRightRadius: 0,
+    borderBottomRightRadius: 0,
   };
 
   return (
-    <View style={[styles.container, containerStyle, { pointerEvents: "auto" }]}>
+    <TouchableOpacity 
+      activeOpacity={0.9}
+      onPress={handleExpand}
+      style={[styles.container, containerStyle, { pointerEvents: "auto" }]}
+    >
       <VideoPlayer
         streamType={streamType}
         streamUrl={activeSession.streamUrl}
         livekitToken={lkToken}
         livekitUrl={lkUrl}
-        liveBadgeVariant={mode === "minimized" ? "dot" : "full"}
-        isHost={false}
+        isHost={isHost}
+        isMini={mode === "minimized"}
       />
-    </View>
+    </TouchableOpacity>
   );
 }
 

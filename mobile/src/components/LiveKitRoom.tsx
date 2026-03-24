@@ -28,6 +28,8 @@ interface LiveKitRoomProps {
   cameraFacingMode?: "user" | "environment";
   onConnectionChange?: (connected: boolean) => void;
   onParticipantCountChange?: (count: number) => void;
+  isFullscreen?: boolean;
+  isMini?: boolean;
 }
 
 export default function LiveKitRoomWrapper({
@@ -39,12 +41,20 @@ export default function LiveKitRoomWrapper({
   cameraFacingMode = "user",
   onConnectionChange,
   onParticipantCountChange,
+  isFullscreen = false,
+  isMini = false,
 }: LiveKitRoomProps) {
   const [error, setError] = useState<string | null>(null);
 
+  const containerStyle = [
+    styles.container,
+    isFullscreen && styles.containerFullscreen,
+    isMini && styles.containerMini,
+  ];
+
   if (error) {
     return (
-      <View style={styles.container}>
+      <View style={containerStyle}>
         <View style={styles.errorOverlay}>
           <Text style={styles.errorText}>Connection Error</Text>
           <Text style={styles.errorDetail}>{error}</Text>
@@ -60,7 +70,7 @@ export default function LiveKitRoomWrapper({
   }
 
   return (
-    <View style={styles.container}>
+    <View style={containerStyle}>
       <LKRoom
         serverUrl={url}
         token={token}
@@ -219,6 +229,19 @@ const styles = StyleSheet.create({
     backgroundColor: "#0a0a1a",
     borderRadius: 12,
     overflow: "hidden",
+  },
+  containerFullscreen: {
+    aspectRatio: undefined,
+    borderRadius: 0,
+    flex: 1,
+  },
+  containerMini: {
+    aspectRatio: undefined,
+    borderRadius: 12,
+    borderTopRightRadius: 0,
+    borderBottomRightRadius: 0,
+    backgroundColor: "transparent",
+    flex: 1,
   },
   videoFill: {
     flex: 1,

@@ -9,7 +9,7 @@ import { useAppTheme, AppTheme } from "../theme";
 const { width } = Dimensions.get("window");
 
 export default function MiniPlayer() {
-  const { activeSession, isMinimized, lkToken, lkUrl, expandPlayer, closePlayer } = usePlayer();
+  const { activeSession, isMinimized, lkToken, lkUrl, expandPlayer, closePlayer, isHost } = usePlayer();
   const theme = useAppTheme();
   const router = useRouter();
   const [keyboardVisible, setKeyboardVisible] = useState(false);
@@ -34,7 +34,8 @@ export default function MiniPlayer() {
 
   const handleExpand = () => {
     expandPlayer();
-    router.push(`/viewer/${activeSession.id}`);
+    const route = isHost ? `/host/${activeSession.id}` : `/viewer/${activeSession.id}`;
+    router.push(route as any);
   };
 
   const streamType = (activeSession.streamType as "mock" | "livekit") || "livekit";
