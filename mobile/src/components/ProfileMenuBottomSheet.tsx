@@ -137,7 +137,7 @@ export default function ProfileMenuBottomSheet({ visible, onClose }: ProfileMenu
 
   return (
     <>
-      <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} />
           <View style={styles.menuSheet}>

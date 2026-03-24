@@ -407,7 +407,7 @@ export default function ProfileScreen() {
       />
 
       {/* Product Create/Edit Modal */}
-      <Modal visible={showProductForm} transparent animationType="slide" onRequestClose={resetProductForm}>
+      <Modal visible={showProductForm} transparent animationType="fade" onRequestClose={resetProductForm}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
           <View style={styles.modalOverlay}>
             <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={resetProductForm} />
@@ -468,7 +468,7 @@ export default function ProfileScreen() {
       </Modal>
 
       {/* Product Action Modal (Edit / Delete) */}
-      <Modal visible={Boolean(actionProduct)} transparent animationType="slide" onRequestClose={() => setActionProduct(null)}>
+      <Modal visible={Boolean(actionProduct)} transparent animationType="fade" onRequestClose={() => setActionProduct(null)}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setActionProduct(null)} />
           <View style={styles.menuSheet}>

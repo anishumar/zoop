@@ -264,7 +264,7 @@ export default function HomeScreen() {
         }
       />
 
-      <Modal visible={showGoLive} transparent animationType="slide" onRequestClose={() => setShowGoLive(false)}>
+      <Modal visible={showGoLive} transparent animationType="fade" onRequestClose={() => setShowGoLive(false)}>
         <KeyboardAvoidingView
           style={{ flex: 1 }}
           behavior={Platform.OS === "ios" ? "padding" : Platform.OS === "android" ? "height" : undefined}
