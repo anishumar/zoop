@@ -5,11 +5,11 @@ import { sendSuccess } from "../utils/ApiResponse";
 import { ApiError } from "../utils/ApiError";
 
 export const createProduct = catchAsync(async (req: Request, res: Response) => {
-  const { title, price, image } = req.body;
+  const { title, price } = req.body;
   if (!title || price === undefined) {
     throw new ApiError(400, "Title and price are required");
   }
-  const product = await ProductService.create(req.user!.userId, { title, price, image });
+  const product = await ProductService.create(req.user!.userId, { title, price });
   sendSuccess(res, product, "Product created", 201);
 });
 
@@ -33,4 +33,27 @@ export const updateProduct = catchAsync(async (req: Request, res: Response) => {
 export const deleteProduct = catchAsync(async (req: Request, res: Response) => {
   await ProductService.delete(String(req.params.id), req.user!.userId);
   sendSuccess(res, null, "Product deleted");
+});
+
+export const setProductImage = catchAsync(async (req: Request, res: Response) => {
+  const { imageKey, imageUrl, imageMimeType, imageSize, imageWidth, imageHeight } = req.body;
+  if (!imageKey || !imageUrl) {
+    throw new ApiError(400, "imageKey and imageUrl are required");
+  }
+
+  const product = await ProductService.setImage(String(req.params.id), req.user!.userId, {
+    imageKey,
+    imageUrl,
+    imageMimeType,
+    imageSize,
+    imageWidth,
+    imageHeight,
+  });
+
+  sendSuccess(res, product, "Product image updated");
+});
+
+export const removeProductImage = catchAsync(async (req: Request, res: Response) => {
+  const product = await ProductService.removeImage(String(req.params.id), req.user!.userId);
+  sendSuccess(res, product, "Product image removed");
 });

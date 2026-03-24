@@ -9,10 +9,14 @@ import {
   RefreshControl,
   TextInput,
   Modal,
+  Platform,
+  Image,
 } from "react-native";
 import { useFocusEffect } from "expo-router";
+import * as ImagePicker from "expo-image-picker";
 import { apiClient } from "../../src/api/client";
 import { Product, ApiResponse } from "../../src/types";
+import { uploadProductImage } from "../../src/api/uploads";
 
 interface ProductListResponse {
   products: Product[];
@@ -27,8 +31,15 @@ export default function ProductsScreen() {
   const [showCreate, setShowCreate] = useState(false);
   const [title, setTitle] = useState("");
   const [price, setPrice] = useState("");
-  const [image, setImage] = useState("");
   const [creating, setCreating] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [selectedImage, setSelectedImage] = useState<{
+    uri: string;
+    mimeType: string;
+    fileSize: number;
+    width?: number;
+    height?: number;
+  } | null>(null);
 
   const fetchProducts = useCallback(async () => {
     try {
@@ -64,14 +75,29 @@ export default function ProductsScreen() {
 
     setCreating(true);
     try {
-      await apiClient("/products", {
+      const createRes = await apiClient<ApiResponse<Product>>("/products", {
         method: "POST",
-        body: { title: title.trim(), price: priceNum, image: image.trim() },
+        body: { title: title.trim(), price: priceNum },
       });
+
+      if (selectedImage) {
+        const uploaded = await uploadProductImage(selectedImage);
+        await apiClient(`/products/${createRes.data.id}/image`, {
+          method: "PATCH",
+          body: {
+            ...uploaded,
+            imageMimeType: selectedImage.mimeType,
+            imageSize: selectedImage.fileSize,
+            imageWidth: selectedImage.width,
+            imageHeight: selectedImage.height,
+          },
+        });
+      }
+
       setShowCreate(false);
       setTitle("");
       setPrice("");
-      setImage("");
+      setSelectedImage(null);
       fetchProducts();
     } catch (err: any) {
       Alert.alert("Error", err.message);
@@ -80,21 +106,90 @@ export default function ProductsScreen() {
     }
   }
 
+  async function openGallery() {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert("Permission denied", "Please allow gallery permission to add images.");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      quality: 0.8,
+    });
+
+    if (result.canceled || !result.assets.length) return;
+    const asset = result.assets[0];
+    setSelectedImage({
+      uri: asset.uri,
+      mimeType: asset.mimeType || "image/jpeg",
+      fileSize: asset.fileSize || 0,
+      width: asset.width,
+      height: asset.height,
+    });
+  }
+
+  async function openCamera() {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert("Permission denied", "Please allow camera permission to capture images.");
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      quality: 0.8,
+    });
+
+    if (result.canceled || !result.assets.length) return;
+    const asset = result.assets[0];
+    setSelectedImage({
+      uri: asset.uri,
+      mimeType: asset.mimeType || "image/jpeg",
+      fileSize: asset.fileSize || 0,
+      width: asset.width,
+      height: asset.height,
+    });
+  }
+
+  function handlePickImage() {
+    if (Platform.OS === "web") {
+      openGallery();
+      return;
+    }
+
+    Alert.alert("Add Product Image", "Choose image source", [
+      { text: "Camera", onPress: () => void openCamera() },
+      { text: "Gallery", onPress: () => void openGallery() },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  }
+
   async function handleDelete(id: string) {
+    const deleteProduct = async () => {
+      try {
+        setDeletingId(id);
+        await apiClient(`/products/${id}`, { method: "DELETE" });
+        fetchProducts();
+      } catch (err: any) {
+        Alert.alert("Error", err.message);
+      } finally {
+        setDeletingId(null);
+      }
+    };
+
+    if (Platform.OS === "web") {
+      const confirmed = window.confirm("Are you sure you want to delete this product?");
+      if (confirmed) {
+        await deleteProduct();
+      }
+      return;
+    }
+
     Alert.alert("Delete Product", "Are you sure?", [
       { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await apiClient(`/products/${id}`, { method: "DELETE" });
-            fetchProducts();
-          } catch (err: any) {
-            Alert.alert("Error", err.message);
-          }
-        },
-      },
+      { text: "Delete", style: "destructive", onPress: deleteProduct },
     ]);
   }
 
@@ -102,14 +197,22 @@ export default function ProductsScreen() {
     return (
       <View style={styles.productCard}>
         <View style={styles.productIcon}>
-          <Text style={styles.productEmoji}>📦</Text>
+          {item.imageUrl ? (
+            <Image source={{ uri: item.imageUrl }} style={styles.productImage} />
+          ) : (
+            <Text style={styles.productEmoji}>📦</Text>
+          )}
         </View>
         <View style={styles.productInfo}>
           <Text style={styles.productTitle} numberOfLines={1}>{item.title}</Text>
           <Text style={styles.productPrice}>${item.price.toFixed(2)}</Text>
         </View>
-        <TouchableOpacity style={styles.deleteButton} onPress={() => handleDelete(item.id)}>
-          <Text style={styles.deleteText}>✕</Text>
+        <TouchableOpacity
+          style={[styles.deleteButton, deletingId === item.id && { opacity: 0.6 }]}
+          onPress={() => handleDelete(item.id)}
+          disabled={deletingId === item.id}
+        >
+          <Text style={styles.deleteText}>{deletingId === item.id ? "…" : "✕"}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -141,39 +244,44 @@ export default function ProductsScreen() {
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>New Product</Text>
 
-            <Text style={styles.label}>Title</Text>
+            <Text style={styles.label}>Name</Text>
             <TextInput
               style={styles.input}
-              placeholder="Product name"
+              placeholder="Enter product name"
               placeholderTextColor="#64748b"
               value={title}
               onChangeText={setTitle}
             />
 
-            <Text style={styles.label}>Price ($)</Text>
+            <Text style={styles.label}>Price (₹)</Text>
             <TextInput
               style={styles.input}
-              placeholder="29.99"
+              placeholder="₹0"
               placeholderTextColor="#64748b"
               value={price}
               onChangeText={setPrice}
               keyboardType="decimal-pad"
             />
 
-            <Text style={styles.label}>Image URL (optional)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="https://..."
-              placeholderTextColor="#64748b"
-              value={image}
-              onChangeText={setImage}
-              autoCapitalize="none"
-            />
+            <Text style={styles.label}>Product Image</Text>
+            <TouchableOpacity style={styles.imagePickerBtn} onPress={handlePickImage}>
+              <Text style={styles.imagePickerBtnText}>
+                {selectedImage ? "Change Image" : Platform.OS === "web" ? "Choose from Gallery" : "Camera or Gallery"}
+              </Text>
+            </TouchableOpacity>
+            {selectedImage && (
+              <View style={styles.imagePreviewWrap}>
+                <Image source={{ uri: selectedImage.uri }} style={styles.imagePreview} />
+                <TouchableOpacity style={styles.removeImageBtn} onPress={() => setSelectedImage(null)}>
+                  <Text style={styles.removeImageText}>Remove</Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
             <View style={styles.modalButtons}>
               <TouchableOpacity
                 style={styles.cancelBtn}
-                onPress={() => { setShowCreate(false); setTitle(""); setPrice(""); setImage(""); }}
+                onPress={() => { setShowCreate(false); setTitle(""); setPrice(""); setSelectedImage(null); }}
               >
                 <Text style={styles.cancelText}>Cancel</Text>
               </TouchableOpacity>
@@ -212,6 +320,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   productEmoji: { fontSize: 24 },
+  productImage: { width: 48, height: 48, borderRadius: 12 },
   productInfo: { flex: 1, marginLeft: 14 },
   productTitle: { fontSize: 16, fontWeight: "600", color: "#f8fafc" },
   productPrice: { fontSize: 15, color: "#22c55e", fontWeight: "700", marginTop: 2 },
@@ -258,6 +367,33 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#334155",
   },
+  imagePickerBtn: {
+    marginTop: 10,
+    backgroundColor: "#334155",
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  imagePickerBtnText: { color: "#f8fafc", fontWeight: "600", fontSize: 14 },
+  imagePreviewWrap: {
+    marginTop: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#0f172a",
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: "#334155",
+  },
+  imagePreview: { width: 54, height: 54, borderRadius: 10 },
+  removeImageBtn: {
+    backgroundColor: "#7f1d1d",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  removeImageText: { color: "#fecaca", fontWeight: "700", fontSize: 12 },
   modalButtons: { flexDirection: "row", marginTop: 24, gap: 12 },
   cancelBtn: { flex: 1, padding: 16, borderRadius: 12, backgroundColor: "#334155", alignItems: "center" },
   cancelText: { color: "#94a3b8", fontWeight: "600", fontSize: 16 },

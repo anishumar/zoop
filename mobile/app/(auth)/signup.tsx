@@ -64,7 +64,7 @@ export default function SignupScreen() {
           <Text style={styles.label}>Email</Text>
           <TextInput
             style={styles.input}
-            placeholder="you@example.com"
+            placeholder="Enter your email"
             placeholderTextColor="#64748b"
             value={email}
             onChangeText={setEmail}

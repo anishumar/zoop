@@ -2,11 +2,11 @@ import { useEffect, useState, useRef } from "react";
 import {
   View,
   Text,
-  FlatList,
   TouchableOpacity,
   StyleSheet,
   Alert,
   ScrollView,
+  Platform,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -23,6 +23,7 @@ interface ProductListResponse {
 
 export default function HostScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const sessionId = Array.isArray(id) ? id[0] : id;
   const router = useRouter();
   const socketRef = useRef<Socket | null>(null);
 
@@ -31,23 +32,26 @@ export default function HostScreen() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [viewerCount, setViewerCount] = useState(0);
   const [reactionCount, setReactionCount] = useState(0);
+  const [endingSession, setEndingSession] = useState(false);
 
   useEffect(() => {
+    if (!sessionId) return;
     loadSession();
     loadMyProducts();
     setupSocket();
 
     return () => {
-      if (socketRef.current && id) {
-        socketRef.current.emit("leave_live", id);
+      if (socketRef.current) {
+        socketRef.current.emit("leave_live", sessionId);
       }
       disconnectSocket();
     };
-  }, [id]);
+  }, [sessionId]);
 
   async function loadSession() {
     try {
-      const res = await apiClient<ApiResponse<LiveSession>>(`/sessions/${id}`);
+      if (!sessionId) return;
+      const res = await apiClient<ApiResponse<LiveSession>>(`/sessions/${sessionId}`);
       setSession(res.data);
     } catch (err: any) {
       Alert.alert("Error", err.message);
@@ -63,10 +67,11 @@ export default function HostScreen() {
 
   async function setupSocket() {
     try {
+      if (!sessionId) return;
       const socket = await connectSocket();
       socketRef.current = socket;
 
-      socket.emit("join_live", id);
+      socket.emit("join_live", sessionId);
 
       socket.on("viewer_count_update", (data: { count: number }) => {
         setViewerCount(data.count);
@@ -86,26 +91,40 @@ export default function HostScreen() {
   }
 
   async function handleEndSession() {
+    if (!sessionId) {
+      Alert.alert("Error", "Missing live session id");
+      return;
+    }
+    const endSession = async () => {
+      try {
+        setEndingSession(true);
+        await apiClient(`/sessions/${sessionId}/end`, { method: "PATCH" });
+        router.replace("/(tabs)");
+      } catch (err: any) {
+        Alert.alert("Error", err.message);
+      } finally {
+        setEndingSession(false);
+      }
+    };
+
+    if (Platform.OS === "web") {
+      const confirmed = window.confirm("Are you sure you want to end this live session?");
+      if (confirmed) {
+        await endSession();
+      }
+      return;
+    }
+
     Alert.alert("End Session", "Are you sure you want to end this live session?", [
       { text: "Cancel", style: "cancel" },
-      {
-        text: "End",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await apiClient(`/sessions/${id}/end`, { method: "PATCH" });
-            router.back();
-          } catch (err: any) {
-            Alert.alert("Error", err.message);
-          }
-        },
-      },
+      { text: "End", style: "destructive", onPress: endSession },
     ]);
   }
 
   async function handleAddProduct(productId: string) {
     try {
-      await apiClient(`/sessions/${id}/products`, {
+      if (!sessionId) return;
+      await apiClient(`/sessions/${sessionId}/products`, {
         method: "POST",
         body: { productId },
       });
@@ -124,8 +143,12 @@ export default function HostScreen() {
           <TouchableOpacity onPress={() => router.back()}>
             <Text style={styles.backText}>← Back</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.endButton} onPress={handleEndSession}>
-            <Text style={styles.endButtonText}>End Live</Text>
+          <TouchableOpacity
+            style={[styles.endButton, endingSession && { opacity: 0.7 }]}
+            onPress={handleEndSession}
+            disabled={endingSession}
+          >
+            <Text style={styles.endButtonText}>{endingSession ? "Ending..." : "End Live"}</Text>
           </TouchableOpacity>
         </View>
 

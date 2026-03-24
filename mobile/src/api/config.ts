@@ -1,9 +1,5 @@
-const API_ORIGIN = process.env.EXPO_PUBLIC_API_ORIGIN;
+const API_ORIGIN = (process.env.EXPO_PUBLIC_API_ORIGIN ?? "http://127.0.0.1:3000").replace(/\/$/, "");
 
-if (!API_ORIGIN) {
-  throw new Error("Missing EXPO_PUBLIC_API_ORIGIN. Add it to mobile/.env");
-}
-
-const API_BASE_URL = `${API_ORIGIN.replace(/\/$/, "")}/api`;
+const API_BASE_URL = `${API_ORIGIN}/api`;
 
 export { API_ORIGIN, API_BASE_URL };

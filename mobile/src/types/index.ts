@@ -9,8 +9,13 @@ export interface Product {
   id: string;
   title: string;
   price: number;
-  image: string;
   ownerId: string;
+  imageKey?: string | null;
+  imageUrl?: string | null;
+  imageMimeType?: string | null;
+  imageSize?: number | null;
+  imageWidth?: number | null;
+  imageHeight?: number | null;
 }
 
 export interface LiveSession {

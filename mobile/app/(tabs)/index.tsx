@@ -9,6 +9,7 @@ import {
   RefreshControl,
   TextInput,
   Modal,
+  Platform,
 } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { apiClient } from "../../src/api/client";
@@ -189,10 +190,15 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 18,
     alignItems: "center",
-    shadowColor: "#ef4444",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    ...Platform.select({
+      web: { boxShadow: "0px 4px 8px rgba(239, 68, 68, 0.3)" },
+      default: {
+        shadowColor: "#ef4444",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+      },
+    }),
     elevation: 8,
   },
   goLiveText: { color: "#fff", fontSize: 18, fontWeight: "800" },
