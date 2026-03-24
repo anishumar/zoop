@@ -1,36 +1,70 @@
 import React from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
+import LiveKitRoom from "./LiveKitRoom";
 
 interface VideoPlayerProps {
-  streamType: "mock" | "agora" | "livekit";
+  streamType: "mock" | "livekit";
   streamUrl?: string | null;
+  livekitToken?: string | null;
+  livekitUrl?: string | null;
+  isHost?: boolean;
+  onConnectionChange?: (connected: boolean) => void;
+  onParticipantCountChange?: (count: number) => void;
 }
 
-/**
- * Pluggable video player component.
- * Currently renders a mock placeholder.
- * Replace the inner implementation with a real SDK (Agora, LiveKit)
- * without changing the component interface.
- */
-export default function VideoPlayer({ streamType, streamUrl }: VideoPlayerProps) {
-  if (streamType === "mock" || !streamUrl) {
-    return <MockVideoPlayer />;
+export default function VideoPlayer({
+  streamType,
+  streamUrl,
+  livekitToken,
+  livekitUrl,
+  isHost = false,
+  onConnectionChange,
+  onParticipantCountChange,
+}: VideoPlayerProps) {
+  if (streamType === "livekit" && livekitToken && livekitUrl) {
+    return (
+      <View style={styles.wrapper}>
+        <LiveKitRoom
+          token={livekitToken}
+          url={livekitUrl}
+          isHost={isHost}
+          onConnectionChange={onConnectionChange}
+          onParticipantCountChange={onParticipantCountChange}
+        />
+        <LiveBadge />
+      </View>
+    );
   }
 
-  // Future: switch on streamType to render Agora/LiveKit player
-  // case "agora": return <AgoraPlayer streamUrl={streamUrl} />;
-  // case "livekit": return <LiveKitPlayer streamUrl={streamUrl} />;
+  if (streamType === "livekit" && !livekitToken) {
+    return <ConnectingPlayer />;
+  }
 
   return <MockVideoPlayer />;
+}
+
+function LiveBadge() {
+  return (
+    <View style={styles.liveIndicator}>
+      <View style={styles.liveDot} />
+      <Text style={styles.liveText}>LIVE</Text>
+    </View>
+  );
+}
+
+function ConnectingPlayer() {
+  return (
+    <View style={styles.container}>
+      <ActivityIndicator size="large" color="#3b82f6" />
+      <Text style={styles.connectingText}>Connecting to stream...</Text>
+    </View>
+  );
 }
 
 function MockVideoPlayer() {
   return (
     <View style={styles.container}>
-      <View style={styles.liveIndicator}>
-        <View style={styles.liveDot} />
-        <Text style={styles.liveText}>LIVE</Text>
-      </View>
+      <LiveBadge />
       <Text style={styles.mockText}>Live Stream</Text>
       <Text style={styles.subText}>Video streaming is mocked</Text>
     </View>
@@ -38,6 +72,13 @@ function MockVideoPlayer() {
 }
 
 const styles = StyleSheet.create({
+  wrapper: {
+    width: "100%",
+    aspectRatio: 16 / 9,
+    borderRadius: 12,
+    overflow: "hidden",
+    position: "relative",
+  },
   container: {
     width: "100%",
     aspectRatio: 16 / 9,
@@ -57,6 +98,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 4,
+    zIndex: 10,
   },
   liveDot: {
     width: 8,
@@ -69,6 +111,11 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "700",
     fontSize: 12,
+  },
+  connectingText: {
+    color: "#94a3b8",
+    fontSize: 14,
+    marginTop: 12,
   },
   mockText: {
     color: "#fff",

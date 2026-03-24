@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useMemo } from "react";
+import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import {
   View,
   Text,
@@ -14,7 +14,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Socket } from "socket.io-client";
 import { apiClient } from "../../src/api/client";
 import { connectSocket, disconnectSocket } from "../../src/api/socket";
+import { getLiveKitToken, LiveKitTokenResponse } from "../../src/api/livekit";
 import VideoPlayer from "../../src/components/VideoPlayer";
+import HostControls from "../../src/components/HostControls";
 import { LiveSession, Product, Message, ApiResponse } from "../../src/types";
 import { AppTheme, useAppTheme } from "../../src/theme";
 
@@ -35,6 +37,14 @@ export default function HostScreen() {
   const [viewerCount, setViewerCount] = useState(0);
   const [reactionCount, setReactionCount] = useState(0);
   const [endingSession, setEndingSession] = useState(false);
+
+  const [lkToken, setLkToken] = useState<string | null>(null);
+  const [lkUrl, setLkUrl] = useState<string | null>(null);
+  const [streamConnected, setStreamConnected] = useState(false);
+  const [isCameraOn, setIsCameraOn] = useState(true);
+  const [isMicOn, setIsMicOn] = useState(true);
+  const [isFrontCamera, setIsFrontCamera] = useState(true);
+
   const theme = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
 
@@ -51,14 +61,27 @@ export default function HostScreen() {
     loadSession();
     loadMyProducts();
     setupSocket();
+    fetchLiveKitToken();
 
     return () => {
       if (socketRef.current) {
+        socketRef.current.emit("host_stream_ended", { sessionId });
         socketRef.current.emit("leave_live", sessionId);
       }
       disconnectSocket();
     };
   }, [sessionId]);
+
+  async function fetchLiveKitToken() {
+    if (!sessionId) return;
+    try {
+      const data = await getLiveKitToken(sessionId);
+      setLkToken(data.token);
+      setLkUrl(data.url);
+    } catch (err: any) {
+      console.error("Failed to get LiveKit token:", err.message);
+    }
+  }
 
   async function loadSession() {
     try {
@@ -102,6 +125,20 @@ export default function HostScreen() {
     }
   }
 
+  const handleConnectionChange = useCallback(
+    (connected: boolean) => {
+      setStreamConnected(connected);
+      if (connected && socketRef.current) {
+        socketRef.current.emit("host_stream_started", { sessionId });
+      }
+    },
+    [sessionId]
+  );
+
+  const handleParticipantCount = useCallback((count: number) => {
+    setViewerCount(Math.max(0, count - 1));
+  }, []);
+
   async function handleEndSession() {
     if (!sessionId) {
       Alert.alert("Error", "Missing live session id");
@@ -110,6 +147,9 @@ export default function HostScreen() {
     const endSession = async () => {
       try {
         setEndingSession(true);
+        if (socketRef.current) {
+          socketRef.current.emit("host_stream_ended", { sessionId });
+        }
         await apiClient(`/sessions/${sessionId}/end`, { method: "PATCH" });
         router.replace("/(tabs)");
       } catch (err: any) {
@@ -161,6 +201,7 @@ export default function HostScreen() {
 
   const showcasedIds = new Set(session?.sessionProducts?.map((sp) => sp.product.id) || []);
   const availableProducts = myProducts.filter((p) => !showcasedIds.has(p.id));
+  const streamType = (session?.streamType as "mock" | "livekit") || "livekit";
 
   return (
     <SafeAreaView style={styles.container}>
@@ -169,16 +210,45 @@ export default function HostScreen() {
           <TouchableOpacity onPress={handleBack}>
             <Text style={styles.backText}>← Back</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.endButton, endingSession && { opacity: 0.7 }]}
-            onPress={handleEndSession}
-            disabled={endingSession}
-          >
-            <Text style={styles.endButtonText}>{endingSession ? "Ending..." : "End Live"}</Text>
-          </TouchableOpacity>
+          <View style={styles.topBarRight}>
+            {streamConnected && (
+              <View style={styles.connectedBadge}>
+                <View style={styles.connectedDot} />
+                <Text style={styles.connectedText}>Live</Text>
+              </View>
+            )}
+            <TouchableOpacity
+              style={[styles.endButton, endingSession && { opacity: 0.7 }]}
+              onPress={handleEndSession}
+              disabled={endingSession}
+            >
+              <Text style={styles.endButtonText}>{endingSession ? "Ending..." : "End Live"}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
-        <VideoPlayer streamType={(session?.streamType as any) || "mock"} streamUrl={session?.streamUrl} />
+        <View style={styles.videoSection}>
+          <VideoPlayer
+            streamType={streamType}
+            streamUrl={session?.streamUrl}
+            livekitToken={lkToken}
+            livekitUrl={lkUrl}
+            isHost={true}
+            onConnectionChange={handleConnectionChange}
+            onParticipantCountChange={handleParticipantCount}
+          />
+        </View>
+
+        {streamType === "livekit" && (
+          <HostControls
+            isCameraOn={isCameraOn}
+            isMicOn={isMicOn}
+            isFrontCamera={isFrontCamera}
+            onToggleCamera={() => setIsCameraOn((v) => !v)}
+            onToggleMic={() => setIsMicOn((v) => !v)}
+            onFlipCamera={() => setIsFrontCamera((v) => !v)}
+          />
+        )}
 
         <View style={styles.statsRow}>
           <View style={styles.statItem}>
@@ -275,9 +345,35 @@ const createStyles = (theme: AppTheme) =>
     alignItems: "center",
     padding: 16,
   },
+  topBarRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
   backText: { color: theme.textMuted, fontSize: 16, fontWeight: "600" },
-  endButton: { backgroundColor: theme.accent, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8 },
-  endButtonText: { color: theme.textOnAccent, fontWeight: "700", fontSize: 14 },
+  connectedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(34, 197, 94, 0.15)",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  connectedDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#22c55e",
+    marginRight: 6,
+  },
+  connectedText: {
+    color: "#22c55e",
+    fontWeight: "700",
+    fontSize: 12,
+  },
+  endButton: { backgroundColor: "#ef4444", borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8 },
+  endButtonText: { color: "#fff", fontWeight: "700", fontSize: 14 },
+  videoSection: { marginHorizontal: 16 },
   statsRow: {
     flexDirection: "row",
     justifyContent: "space-around",

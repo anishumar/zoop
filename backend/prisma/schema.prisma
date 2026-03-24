@@ -44,15 +44,19 @@ model Product {
 }
 
 model LiveSession {
-  id         String   @id @default(uuid())
-  title      String   @default("Live Session")
-  isLive     Boolean  @default(false)
-  startedAt  DateTime?
-  endedAt    DateTime?
-  streamUrl  String?
-  streamType String   @default("mock") // "mock" | "agora" | "livekit"
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id           String   @id @default(uuid())
+  title        String   @default("Live Session")
+  isLive       Boolean  @default(false)
+  startedAt    DateTime?
+  endedAt      DateTime?
+  streamUrl    String?
+  streamType   String   @default("livekit") // "mock" | "livekit"
+  roomName     String?
+  viewerCount  Int      @default(0)
+  peakViewers  Int      @default(0)
+  thumbnailUrl String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   hostId String
   host   User   @relation(fields: [hostId], references: [id], onDelete: Cascade)

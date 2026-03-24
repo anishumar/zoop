@@ -3,32 +3,43 @@
   "version": "1.0.0",
   "main": "expo-router/entry",
   "scripts": {
+    "postinstall": "bash ./scripts/postinstall-expo-symlinks.sh",
     "start": "expo start",
-    "android": "expo start --android",
+    "android": "expo run:android",
+    "android:logs": "bash ./scripts/android-logcat.sh",
+    "android:logs:all": "bash ./scripts/android-logcat.sh all",
+    "android:reverse": "bash ./scripts/adb-reverse-dev.sh",
     "android:usb": "bash ./scripts/run-android-usb.sh",
-    "ios": "expo start --ios",
+    "ios": "expo run:ios",
     "web": "expo start --web",
     "web:local": "bash ./scripts/run-web-local.sh"
   },
   "dependencies": {
-    "@react-native-async-storage/async-storage": "~2.1.2",
+    "@livekit/react-native": "^2.9.3",
+    "@livekit/react-native-webrtc": "^137.0.2",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native/normalize-colors": "0.81.5",
+    "@react-native/virtualized-lists": "0.81.5",
     "expo": "~54.0.0",
-    "expo-constants": "~17.1.6",
+    "expo-av": "~16.0.8",
+    "expo-camera": "~17.0.10",
+    "expo-constants": "~18.0.13",
     "expo-image-picker": "~17.0.10",
-    "expo-linking": "~7.1.5",
+    "expo-linking": "~8.0.11",
     "expo-router": "~6.0.7",
-    "expo-status-bar": "~2.2.3",
+    "expo-status-bar": "~3.0.9",
+    "livekit-client": "^2.18.0",
     "react": "19.1.0",
     "react-dom": "^19.1.0",
-    "react-native": "0.81.4",
-    "react-native-safe-area-context": "~5.4.0",
-    "react-native-screens": "~4.11.1",
+    "react-native": "0.81.5",
+    "react-native-safe-area-context": "~5.6.0",
+    "react-native-screens": "~4.16.0",
     "react-native-web": "^0.21.2",
-    "socket.io-client": "^4.8.3"
+    "socket.io-client": "^4.8.3",
+    "typescript": "~5.9.2"
   },
   "devDependencies": {
-    "@types/react": "~19.1.0",
-    "typescript": "~5.8.3"
+    "@types/react": "~19.1.0"
   },
   "private": true
 }

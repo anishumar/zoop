@@ -18,7 +18,8 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#0f172a"
-      }
+      },
+      "package": "com.anonymous.zooplive"
     },
     "web": {
       "favicon": "./assets/favicon.png"

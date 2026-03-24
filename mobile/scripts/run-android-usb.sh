@@ -31,6 +31,13 @@ if [ -s "${HOME}/.nvm/nvm.sh" ]; then
   nvm use 20 >/dev/null
 fi
 
+# Ensure Android SDK paths are set for native builds/tools.
+if [ -d "/usr/local/share/android-commandlinetools" ]; then
+  export ANDROID_HOME="/usr/local/share/android-commandlinetools"
+  export ANDROID_SDK_ROOT="/usr/local/share/android-commandlinetools"
+  export PATH="${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/cmdline-tools/latest/bin:${PATH}"
+fi
+
 free_port_if_needed "${PORT}"
 
 echo "Checking Android device connection..."

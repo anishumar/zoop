@@ -1,24 +1,52 @@
 import prisma from "../prisma/client";
 import { ApiError } from "../utils/ApiError";
+import { LiveKitService } from "./livekit.service";
 
 export class SessionService {
   static async create(hostId: string, data: { title?: string; streamType?: string }) {
-    return prisma.liveSession.create({
+    const streamType = data.streamType || "livekit";
+
+    const session = await prisma.liveSession.create({
       data: {
         hostId,
         title: data.title || "Live Session",
-        streamType: data.streamType || "mock",
+        streamType,
         isLive: true,
         startedAt: new Date(),
       },
       include: { host: { select: { id: true, name: true, email: true } } },
     });
+
+    if (streamType === "livekit") {
+      const roomName = `session-${session.id}`;
+      try {
+        await LiveKitService.createRoom(roomName, {
+          emptyTimeout: 300,
+          maxParticipants: 10000,
+        });
+        await prisma.liveSession.update({
+          where: { id: session.id },
+          data: {
+            roomName,
+            streamUrl: process.env.LIVEKIT_URL || "ws://localhost:7880",
+          },
+        });
+      } catch (err) {
+        console.error("Failed to create LiveKit room:", err);
+      }
+    }
+
+    return session;
   }
 
   static async endSession(sessionId: string, hostId: string) {
     const session = await prisma.liveSession.findUnique({ where: { id: sessionId } });
     if (!session) throw new ApiError(404, "Session not found");
     if (session.hostId !== hostId) throw new ApiError(403, "Only the host can end this session");
+
+    if (session.roomName) {
+      await LiveKitService.deleteRoom(session.roomName);
+    }
 
     return prisma.liveSession.update({
       where: { id: sessionId },

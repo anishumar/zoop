@@ -96,7 +96,12 @@ export default function HomeScreen() {
         </View>
         <View style={styles.sessionInfo}>
           <Text style={styles.sessionTitle} numberOfLines={1}>{item.title}</Text>
-          <Text style={styles.sessionHost}>{item.host?.name || "Unknown"}</Text>
+          <View style={styles.sessionMeta}>
+            <Text style={styles.sessionHost}>{item.host?.name || "Unknown"}</Text>
+            {item.viewerCount > 0 && (
+              <Text style={styles.sessionViewers}>👁 {item.viewerCount}</Text>
+            )}
+          </View>
         </View>
       </TouchableOpacity>
     );
@@ -185,7 +190,9 @@ const createStyles = (theme: AppTheme) =>
   placeholderEmoji: { fontSize: 48 },
   sessionInfo: { padding: 14 },
   sessionTitle: { fontSize: 17, fontWeight: "700", color: theme.text },
-  sessionHost: { fontSize: 14, color: theme.textMuted, marginTop: 4 },
+  sessionMeta: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 4 },
+  sessionHost: { fontSize: 14, color: theme.textMuted },
+  sessionViewers: { fontSize: 13, color: theme.textMuted, fontWeight: "600" },
   empty: { alignItems: "center", marginTop: 100 },
   emptyEmoji: { fontSize: 64, marginBottom: 16 },
   emptyTitle: { fontSize: 20, fontWeight: "700", color: theme.text },

@@ -25,7 +25,11 @@ export interface LiveSession {
   startedAt: string | null;
   endedAt: string | null;
   streamUrl: string | null;
-  streamType: "mock" | "agora" | "livekit";
+  streamType: "mock" | "livekit";
+  roomName: string | null;
+  viewerCount: number;
+  peakViewers: number;
+  thumbnailUrl: string | null;
   hostId: string;
   host: { id: string; name: string };
   sessionProducts?: { product: Product }[];

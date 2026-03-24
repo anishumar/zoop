@@ -36,7 +36,8 @@ export async function apiClient<T = unknown>(endpoint: string, options: RequestO
     const reason = error instanceof Error ? error.message : "Unknown network error";
     throw new Error(
       `Network request failed (${reason}). API origin: ${API_ORIGIN}. ` +
-        "If using Android over USB, run: adb reverse tcp:3000 tcp:3000"
+        "USB Android: from mobile/ run npm run android:reverse (or adb reverse tcp:3000 tcp:3000). " +
+        "Ensure the backend is listening on port 3000 on this machine."
     );
   }
 
