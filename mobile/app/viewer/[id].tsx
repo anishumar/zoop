@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useMemo, useCallback } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import {
   View,
   Text,
@@ -8,7 +8,6 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
-  Image,
   Dimensions,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -21,14 +20,18 @@ import { getLiveKitToken } from "../../src/api/livekit";
 import { LiveSession, Message, ApiResponse } from "../../src/types";
 import { AppTheme, useAppTheme } from "../../src/theme";
 import { usePlayer } from "../../src/contexts/PlayerContext";
+import ImageWithFallback from "../../src/components/ImageWithFallback";
 
 const { width } = Dimensions.get("window");
 const REACTIONS = ["❤️", "🔥", "👏", "😍", "🎉", "💰"];
+const MAX_CHAT_MESSAGES = 200;
+const MAX_FLOATING_REACTIONS = 12;
 
 export default function ViewerScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const socketRef = useRef<Socket | null>(null);
+  const socketCleanupRef = useRef<(() => void) | null>(null);
 
   const [session, setSession] = useState<LiveSession | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -46,9 +49,17 @@ export default function ViewerScreen() {
 
   const theme = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
-  const { openPlayer, minimizePlayer, activeSession: playerActiveSession, closePlayer, isMinimized } = usePlayer();
+  const {
+    openPlayer,
+    activeSession: playerActiveSession,
+    lkToken: playerLkToken,
+    lkUrl: playerLkUrl,
+    closePlayer,
+  } = usePlayer();
 
   const isMinimizing = useRef(false);
+  const effectiveToken = lkToken ?? (playerActiveSession?.id === session?.id ? playerLkToken : null);
+  const effectiveUrl = lkUrl ?? (playerActiveSession?.id === session?.id ? playerLkUrl : null);
 
   function handleBack() {
     console.log("handleBack called, session:", session?.id, "streamEnded:", streamEnded);
@@ -56,7 +67,7 @@ export default function ViewerScreen() {
     if (session && !streamEnded) {
       console.log("Minimizing player...");
       isMinimizing.current = true;
-      openPlayer(session, lkToken, lkUrl, true);
+      openPlayer(session, effectiveToken, effectiveUrl, true);
     } else {
       console.log("Closing player...");
       closePlayer();
@@ -75,6 +86,9 @@ export default function ViewerScreen() {
     fetchLiveKitToken();
 
     return () => {
+      socketCleanupRef.current?.();
+      socketCleanupRef.current = null;
+
       if (!isMinimizing.current) {
         if (socketRef.current && id) {
           socketRef.current.emit("leave_live", id);
@@ -84,15 +98,17 @@ export default function ViewerScreen() {
     };
   }, [id]); // Only run on ID change
 
+  useEffect(() => {
+    if (!session || isMinimizing.current) return;
+    openPlayer(session, effectiveToken, effectiveUrl);
+  }, [effectiveToken, effectiveUrl, openPlayer, session]);
+
   async function fetchLiveKitToken() {
     if (!id) return;
     try {
       const data = await getLiveKitToken(id as string);
       setLkToken(data.token);
       setLkUrl(data.url);
-      if (session && !isMinimizing.current) {
-        openPlayer(session, data.token, data.url);
-      }
     } catch (err: any) {
       console.error("Failed to get LiveKit token:", err.message);
     }
@@ -102,9 +118,8 @@ export default function ViewerScreen() {
     try {
       const res = await apiClient<ApiResponse<LiveSession>>(`/sessions/${id}`);
       setSession(res.data);
-      if (lkToken && !isMinimizing.current) {
-        openPlayer(res.data, lkToken, lkUrl);
-      }
+      setMessages((res.data.messages || []).slice(0, MAX_CHAT_MESSAGES));
+      setViewerCount(res.data.viewerCount || 0);
     } catch {}
   }
 
@@ -113,49 +128,60 @@ export default function ViewerScreen() {
       const socket = await connectSocket();
       socketRef.current = socket;
 
-      socket.emit("join_live", id);
+      socketCleanupRef.current?.();
 
-      socket.on("viewer_count_update", (data: { count: number }) => {
+      const handleViewerCountUpdate = (data: { count: number }) => {
         setViewerCount(data.count);
-      });
+      };
 
-      socket.on("new_reaction", (msg: Message) => {
-        setMessages((prev) => [msg, ...prev]);
+      const handleNewReaction = (msg: Message) => {
+        setMessages((prev) => [msg, ...prev].slice(0, MAX_CHAT_MESSAGES));
         showFloatingReaction(msg.content);
-      });
+      };
 
-      socket.on("new_question", (msg: Message) => {
-        setMessages((prev) => [msg, ...prev]);
-      });
+      const handleNewQuestion = (msg: Message) => {
+        setMessages((prev) => [msg, ...prev].slice(0, MAX_CHAT_MESSAGES));
+      };
 
-      socket.on("stream_ended", () => {
+      const handleStreamEnded = () => {
         setStreamEnded(true);
-      });
+      };
 
-      socket.on("stream_started", () => {
+      const handleStreamStarted = () => {
         setStreamEnded(false);
-      });
+      };
 
-      socket.on("product_highlight", (data: { productId: string }) => {
+      const handleProductHighlight = (data: { productId: string }) => {
         setHighlightedProduct(data.productId);
         setTimeout(() => setHighlightedProduct(null), 5000);
-      });
+      };
+
+      socket.on("viewer_count_update", handleViewerCountUpdate);
+      socket.on("new_reaction", handleNewReaction);
+      socket.on("new_question", handleNewQuestion);
+      socket.on("stream_ended", handleStreamEnded);
+      socket.on("stream_started", handleStreamStarted);
+      socket.on("product_highlight", handleProductHighlight);
+      socket.emit("join_live", id);
+
+      socketCleanupRef.current = () => {
+        socket.off("viewer_count_update", handleViewerCountUpdate);
+        socket.off("new_reaction", handleNewReaction);
+        socket.off("new_question", handleNewQuestion);
+        socket.off("stream_ended", handleStreamEnded);
+        socket.off("stream_started", handleStreamStarted);
+        socket.off("product_highlight", handleProductHighlight);
+      };
     } catch (err) {
       console.error("Socket connection failed:", err);
     }
   }
 
-  const handleConnectionChange = useCallback((connected: boolean) => {
-    setStreamConnected(connected);
-  }, []);
-
-  const handleParticipantCount = useCallback((count: number) => {
-    setViewerCount(Math.max(0, count - 1));
-  }, []);
-
   function showFloatingReaction(emoji: string) {
     const rid = ++reactionIdRef.current;
-    setFloatingReactions((prev) => [...prev, { id: rid, emoji }]);
+    setFloatingReactions((prev) =>
+      [...prev, { id: rid, emoji }].slice(-MAX_FLOATING_REACTIONS)
+    );
     setTimeout(() => {
       setFloatingReactions((prev) => prev.filter((r) => r.id !== rid));
     }, 2000);
@@ -174,7 +200,6 @@ export default function ViewerScreen() {
   }
 
   const products = session?.sessionProducts?.map((sp) => sp.product) || [];
-  const streamType = (session?.streamType as "mock" | "livekit") || "livekit";
 
   return (
     <SafeAreaView style={styles.container}>
@@ -245,11 +270,12 @@ export default function ViewerScreen() {
                   highlightedProduct === item.id && styles.productHighlighted,
                 ]}
               >
-                {item.imageUrl ? (
-                  <Image source={{ uri: item.imageUrl }} style={styles.productImage} />
-                ) : (
-                  <Text style={styles.productEmoji}>📦</Text>
-                )}
+                <ImageWithFallback
+                  uri={item.imageUrl}
+                  style={styles.productImage}
+                  fallbackText="📦"
+                  fallbackStyle={styles.productEmoji}
+                />
                 <Text style={styles.productTitle} numberOfLines={1}>{item.title}</Text>
                 <Text style={styles.productPrice}>${item.price.toFixed(2)}</Text>
               </View>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -23,6 +23,9 @@ interface LiveKitRoomProps {
   token: string;
   url: string;
   isHost: boolean;
+  isCameraEnabled?: boolean;
+  isMicrophoneEnabled?: boolean;
+  cameraFacingMode?: "user" | "environment";
   onConnectionChange?: (connected: boolean) => void;
   onParticipantCountChange?: (count: number) => void;
 }
@@ -31,6 +34,9 @@ export default function LiveKitRoomWrapper({
   token,
   url,
   isHost,
+  isCameraEnabled = true,
+  isMicrophoneEnabled = true,
+  cameraFacingMode = "user",
   onConnectionChange,
   onParticipantCountChange,
 }: LiveKitRoomProps) {
@@ -59,8 +65,8 @@ export default function LiveKitRoomWrapper({
         serverUrl={url}
         token={token}
         connect={true}
-        audio={isHost}
-        video={isHost}
+        audio={isHost ? isMicrophoneEnabled : false}
+        video={isHost && isCameraEnabled ? { facingMode: cameraFacingMode } : false}
         options={{
           adaptiveStream: true,
           dynacast: true,
@@ -75,6 +81,13 @@ export default function LiveKitRoomWrapper({
         onConnected={() => onConnectionChange?.(true)}
         onDisconnected={() => onConnectionChange?.(false)}
       >
+        <HostMediaController
+          isHost={isHost}
+          isCameraEnabled={isCameraEnabled}
+          isMicrophoneEnabled={isMicrophoneEnabled}
+          cameraFacingMode={cameraFacingMode}
+          onControlError={setError}
+        />
         <RoomContent
           isHost={isHost}
           onParticipantCountChange={onParticipantCountChange}
@@ -82,6 +95,74 @@ export default function LiveKitRoomWrapper({
       </LKRoom>
     </View>
   );
+}
+
+function HostMediaController({
+  isHost,
+  isCameraEnabled,
+  isMicrophoneEnabled,
+  cameraFacingMode,
+  onControlError,
+}: {
+  isHost: boolean;
+  isCameraEnabled: boolean;
+  isMicrophoneEnabled: boolean;
+  cameraFacingMode: "user" | "environment";
+  onControlError: (message: string | null) => void;
+}) {
+  const room = useRoomContext();
+  const lastFacingModeRef = useRef(cameraFacingMode);
+  const syncChainRef = useRef<Promise<void>>(Promise.resolve());
+
+  useEffect(() => {
+    if (!isHost) return;
+
+    syncChainRef.current = syncChainRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        try {
+          await room.localParticipant.setMicrophoneEnabled(isMicrophoneEnabled);
+
+          const cameraPublication = room.localParticipant.getTrackPublication(
+            Track.Source.Camera
+          );
+
+          if (!isCameraEnabled) {
+            await room.localParticipant.setCameraEnabled(false);
+            lastFacingModeRef.current = cameraFacingMode;
+            return;
+          }
+
+          if (!cameraPublication?.videoTrack) {
+            await room.localParticipant.setCameraEnabled(true, {
+              facingMode: cameraFacingMode,
+            });
+            lastFacingModeRef.current = cameraFacingMode;
+            return;
+          }
+
+          const isCameraMuted = cameraPublication.track?.isMuted ?? false;
+          if (isCameraMuted) {
+            await room.localParticipant.setCameraEnabled(true, {
+              facingMode: cameraFacingMode,
+            });
+          } else if (lastFacingModeRef.current !== cameraFacingMode) {
+            await cameraPublication.videoTrack.restartTrack({
+              facingMode: cameraFacingMode,
+            });
+          }
+
+          lastFacingModeRef.current = cameraFacingMode;
+          onControlError(null);
+        } catch (error) {
+          onControlError(
+            error instanceof Error ? error.message : "Failed to update live controls"
+          );
+        }
+      });
+  }, [cameraFacingMode, isCameraEnabled, isHost, isMicrophoneEnabled, onControlError, room]);
+
+  return null;
 }
 
 function RoomContent({

@@ -18,6 +18,7 @@ import { apiClient } from "../../src/api/client";
 import { Product, ApiResponse } from "../../src/types";
 import { uploadProductImage } from "../../src/api/uploads";
 import { AppTheme, useAppTheme } from "../../src/theme";
+import ImageWithFallback from "../../src/components/ImageWithFallback";
 
 interface ProductListResponse {
   products: Product[];
@@ -200,11 +201,12 @@ export default function ProductsScreen() {
     return (
       <View style={styles.productCard}>
         <View style={styles.productIcon}>
-          {item.imageUrl ? (
-            <Image source={{ uri: item.imageUrl }} style={styles.productImage} />
-          ) : (
-            <Text style={styles.productEmoji}>📦</Text>
-          )}
+          <ImageWithFallback
+            uri={item.imageUrl}
+            style={styles.productImage}
+            fallbackText="📦"
+            fallbackStyle={styles.productEmoji}
+          />
         </View>
         <View style={styles.productInfo}>
           <Text style={styles.productTitle} numberOfLines={1}>{item.title}</Text>

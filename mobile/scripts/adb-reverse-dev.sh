@@ -20,7 +20,8 @@ if ! command -v adb >/dev/null 2>&1; then
 fi
 
 adb start-server >/dev/null
-# Metro port is still useful for local development via USB
+echo "adb reverse tcp:${API_PORT} tcp:${API_PORT}   (API)"
+adb reverse "tcp:${API_PORT}" "tcp:${API_PORT}"
 echo "adb reverse tcp:${METRO_PORT} tcp:${METRO_PORT}   (Metro)"
 adb reverse "tcp:${METRO_PORT}" "tcp:${METRO_PORT}"
 echo ""

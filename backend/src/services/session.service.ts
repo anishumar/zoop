@@ -11,8 +11,7 @@ export class SessionService {
         hostId,
         title: data.title || "Live Session",
         streamType,
-        isLive: true,
-        startedAt: new Date(),
+        isLive: false,
       },
       include: { host: { select: { id: true, name: true, email: true } } },
     });
@@ -24,19 +23,32 @@ export class SessionService {
           emptyTimeout: 300,
           maxParticipants: 10000,
         });
-        await prisma.liveSession.update({
+        return prisma.liveSession.update({
           where: { id: session.id },
           data: {
             roomName,
             streamUrl: process.env.LIVEKIT_URL || "ws://localhost:7880",
+            isLive: true,
+            startedAt: new Date(),
           },
+          include: { host: { select: { id: true, name: true, email: true } } },
         });
       } catch (err) {
         console.error("Failed to create LiveKit room:", err);
+        await LiveKitService.deleteRoom(roomName);
+        await prisma.liveSession.delete({ where: { id: session.id } }).catch(() => undefined);
+        throw new ApiError(503, "Failed to start live session. Please try again.");
       }
     }
 
-    return session;
+    return prisma.liveSession.update({
+      where: { id: session.id },
+      data: {
+        isLive: true,
+        startedAt: new Date(),
+      },
+      include: { host: { select: { id: true, name: true, email: true } } },
+    });
   }
 
   static async endSession(sessionId: string, hostId: string) {

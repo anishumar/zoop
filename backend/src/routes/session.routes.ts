@@ -9,6 +9,7 @@ import {
   getSessionAnalytics,
 } from "../controllers/session.controller";
 import { authenticate } from "../middlewares/auth";
+import { rateLimiter } from "../middlewares/rateLimiter";
 
 const router = Router();
 
@@ -18,9 +19,25 @@ router.get("/:id/analytics", getSessionAnalytics);
 
 router.use(authenticate);
 
-router.post("/", createSession);
-router.patch("/:id/end", endSession);
-router.post("/:id/products", addProductToSession);
-router.delete("/:id/products", removeProductFromSession);
+router.post(
+  "/",
+  rateLimiter(10, 60_000, (req) => req.user?.userId || req.ip || "unknown"),
+  createSession
+);
+router.patch(
+  "/:id/end",
+  rateLimiter(30, 60_000, (req) => req.user?.userId || req.ip || "unknown"),
+  endSession
+);
+router.post(
+  "/:id/products",
+  rateLimiter(120, 60_000, (req) => req.user?.userId || req.ip || "unknown"),
+  addProductToSession
+);
+router.delete(
+  "/:id/products",
+  rateLimiter(120, 60_000, (req) => req.user?.userId || req.ip || "unknown"),
+  removeProductFromSession
+);
 
 export default router;

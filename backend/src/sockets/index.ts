@@ -11,10 +11,17 @@ import prisma from "../prisma/client";
  *   import { createAdapter } from "@socket.io/redis-adapter";
  *   io.adapter(createAdapter(pubClient, subClient));
  */
-const sessionViewers = new Map<string, Set<string>>();
+const sessionViewerSockets = new Map<string, Set<string>>();
+const socketSessions = new Map<string, Set<string>>();
 
-const REACTION_THROTTLE_MS = 500;
+const REACTION_THROTTLE_MS = 1000;
+const QUESTION_THROTTLE_MS = 3000;
 const reactionTimestamps = new Map<string, number>();
+const questionTimestamps = new Map<string, number>();
+const viewerCountSyncTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const latestViewerCounts = new Map<string, number>();
+const VIEWER_COUNT_SYNC_DEBOUNCE_MS = 1000;
+const ALLOWED_REACTIONS = new Set(["❤️", "🔥", "👏", "😍", "🎉", "💰"]);
 
 export function initializeSocket(httpServer: HttpServer) {
   const io = new Server(httpServer, {
@@ -40,31 +47,28 @@ export function initializeSocket(httpServer: HttpServer) {
   io.on("connection", (socket: Socket) => {
     const user = (socket as Socket & { user: AuthPayload }).user;
 
-    socket.on("join_live", async (sessionId: string) => {
+    socket.on("join_live", (sessionId: string) => {
+      if (!isValidSessionId(sessionId)) return;
+
       socket.join(sessionId);
-
-      if (!sessionViewers.has(sessionId)) {
-        sessionViewers.set(sessionId, new Set());
-      }
-      sessionViewers.get(sessionId)!.add(user.userId);
-
-      const count = sessionViewers.get(sessionId)!.size;
-      io.to(sessionId).emit("viewer_count_update", { sessionId, count });
-
-      updatePeakViewers(sessionId, count);
+      addSocketToSession(sessionId, socket.id);
+      emitViewerCount(io, sessionId);
     });
 
     socket.on("leave_live", (sessionId: string) => {
-      socket.leave(sessionId);
-      removeViewer(sessionId, user.userId);
+      if (!isValidSessionId(sessionId)) return;
 
-      io.to(sessionId).emit("viewer_count_update", {
-        sessionId,
-        count: sessionViewers.get(sessionId)?.size || 0,
-      });
+      socket.leave(sessionId);
+      removeSocketFromSession(sessionId, socket.id);
+      reactionTimestamps.delete(`${user.userId}:${sessionId}`);
+      questionTimestamps.delete(`${user.userId}:${sessionId}`);
+      emitViewerCount(io, sessionId);
     });
 
     socket.on("send_reaction", async (data: { sessionId: string; content: string }) => {
+      if (!isValidSessionId(data.sessionId) || !isSocketInSession(data.sessionId, socket.id)) return;
+      if (!ALLOWED_REACTIONS.has(data.content)) return;
+
       const key = `${user.userId}:${data.sessionId}`;
       const now = Date.now();
       const last = reactionTimestamps.get(key) || 0;
@@ -80,7 +84,14 @@ export function initializeSocket(httpServer: HttpServer) {
     });
 
     socket.on("send_question", async (data: { sessionId: string; content: string }) => {
+      if (!isValidSessionId(data.sessionId) || !isSocketInSession(data.sessionId, socket.id)) return;
       if (!data.content?.trim() || data.content.length > 500) return;
+
+      const key = `${user.userId}:${data.sessionId}`;
+      const now = Date.now();
+      const last = questionTimestamps.get(key) || 0;
+      if (now - last < QUESTION_THROTTLE_MS) return;
+      questionTimestamps.set(key, now);
 
       try {
         const message = await MessageService.create(data.sessionId, user.userId, "question", data.content.trim());
@@ -90,15 +101,24 @@ export function initializeSocket(httpServer: HttpServer) {
       }
     });
 
-    socket.on("host_stream_started", (data: { sessionId: string }) => {
+    socket.on("host_stream_started", async (data: { sessionId: string }) => {
+      if (!isValidSessionId(data.sessionId)) return;
+      if (!(await isHostForSession(data.sessionId, user.userId))) return;
+
       io.to(data.sessionId).emit("stream_started", { sessionId: data.sessionId });
     });
 
-    socket.on("host_stream_ended", (data: { sessionId: string }) => {
+    socket.on("host_stream_ended", async (data: { sessionId: string }) => {
+      if (!isValidSessionId(data.sessionId)) return;
+      if (!(await isHostForSession(data.sessionId, user.userId))) return;
+
       io.to(data.sessionId).emit("stream_ended", { sessionId: data.sessionId });
     });
 
-    socket.on("product_highlighted", (data: { sessionId: string; productId: string }) => {
+    socket.on("product_highlighted", async (data: { sessionId: string; productId: string }) => {
+      if (!isValidSessionId(data.sessionId) || !data.productId) return;
+      if (!(await isHostForSession(data.sessionId, user.userId))) return;
+
       io.to(data.sessionId).emit("product_highlight", {
         sessionId: data.sessionId,
         productId: data.productId,
@@ -106,34 +126,105 @@ export function initializeSocket(httpServer: HttpServer) {
     });
 
     socket.on("disconnect", () => {
-      for (const [sessionId, viewers] of sessionViewers.entries()) {
-        if (viewers.has(user.userId)) {
-          removeViewer(sessionId, user.userId);
-          io.to(sessionId).emit("viewer_count_update", {
-            sessionId,
-            count: viewers.size,
-          });
-        }
+      const joinedSessions = Array.from(socketSessions.get(socket.id) || []);
+      for (const sessionId of joinedSessions) {
+        removeSocketFromSession(sessionId, socket.id);
+        reactionTimestamps.delete(`${user.userId}:${sessionId}`);
+        questionTimestamps.delete(`${user.userId}:${sessionId}`);
+        emitViewerCount(io, sessionId);
       }
+      socketSessions.delete(socket.id);
     });
   });
 
   return io;
 }
 
-function removeViewer(sessionId: string, userId: string) {
-  const viewers = sessionViewers.get(sessionId);
-  if (viewers) {
-    viewers.delete(userId);
-    if (viewers.size === 0) sessionViewers.delete(sessionId);
+function addSocketToSession(sessionId: string, socketId: string) {
+  if (!sessionViewerSockets.has(sessionId)) {
+    sessionViewerSockets.set(sessionId, new Set());
+  }
+  sessionViewerSockets.get(sessionId)!.add(socketId);
+
+  if (!socketSessions.has(socketId)) {
+    socketSessions.set(socketId, new Set());
+  }
+  socketSessions.get(socketId)!.add(sessionId);
+}
+
+function removeSocketFromSession(sessionId: string, socketId: string) {
+  const viewerSockets = sessionViewerSockets.get(sessionId);
+  if (viewerSockets) {
+    viewerSockets.delete(socketId);
+    if (viewerSockets.size === 0) {
+      sessionViewerSockets.delete(sessionId);
+    }
+  }
+
+  const sessions = socketSessions.get(socketId);
+  if (sessions) {
+    sessions.delete(sessionId);
+    if (sessions.size === 0) {
+      socketSessions.delete(socketId);
+    }
   }
 }
 
-async function updatePeakViewers(sessionId: string, currentCount: number) {
+function isSocketInSession(sessionId: string, socketId: string) {
+  return socketSessions.get(socketId)?.has(sessionId) || false;
+}
+
+function getViewerCount(sessionId: string) {
+  return sessionViewerSockets.get(sessionId)?.size || 0;
+}
+
+function emitViewerCount(io: Server, sessionId: string) {
+  const count = getViewerCount(sessionId);
+  io.to(sessionId).emit("viewer_count_update", { sessionId, count });
+  scheduleViewerCountSync(sessionId, count);
+}
+
+function scheduleViewerCountSync(sessionId: string, count: number) {
+  latestViewerCounts.set(sessionId, count);
+  if (viewerCountSyncTimers.has(sessionId)) return;
+
+  viewerCountSyncTimers.set(
+    sessionId,
+    setTimeout(async () => {
+      viewerCountSyncTimers.delete(sessionId);
+      const currentCount = latestViewerCounts.get(sessionId) || 0;
+      latestViewerCounts.delete(sessionId);
+
+      try {
+        await prisma.$transaction([
+          prisma.liveSession.updateMany({
+            where: { id: sessionId, isLive: true },
+            data: { viewerCount: currentCount },
+          }),
+          prisma.liveSession.updateMany({
+            where: { id: sessionId, peakViewers: { lt: currentCount } },
+            data: { peakViewers: currentCount },
+          }),
+        ]);
+      } catch {
+        // Ignore transient DB sync failures; live viewer counts are still broadcast from memory.
+      }
+    }, VIEWER_COUNT_SYNC_DEBOUNCE_MS)
+  );
+}
+
+function isValidSessionId(sessionId: string) {
+  return typeof sessionId === "string" && sessionId.trim().length > 0;
+}
+
+async function isHostForSession(sessionId: string, userId: string) {
   try {
-    await prisma.liveSession.updateMany({
-      where: { id: sessionId, peakViewers: { lt: currentCount } },
-      data: { peakViewers: currentCount, viewerCount: currentCount },
+    const session = await prisma.liveSession.findUnique({
+      where: { id: sessionId },
+      select: { hostId: true, isLive: true },
     });
-  } catch {}
+    return Boolean(session?.isLive && session.hostId === userId);
+  } catch {
+    return false;
+  }
 }

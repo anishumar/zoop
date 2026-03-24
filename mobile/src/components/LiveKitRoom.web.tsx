@@ -18,6 +18,9 @@ interface LiveKitRoomProps {
   token: string;
   url: string;
   isHost: boolean;
+  isCameraEnabled?: boolean;
+  isMicrophoneEnabled?: boolean;
+  cameraFacingMode?: "user" | "environment";
   onConnectionChange?: (connected: boolean) => void;
   onParticipantCountChange?: (count: number) => void;
 }
@@ -26,6 +29,9 @@ export default function LiveKitRoomWeb({
   token,
   url,
   isHost,
+  isCameraEnabled = true,
+  isMicrophoneEnabled = true,
+  cameraFacingMode = "user",
   onConnectionChange,
   onParticipantCountChange,
 }: LiveKitRoomProps) {
@@ -36,6 +42,8 @@ export default function LiveKitRoomWeb({
   const roomRef = useRef<Room | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const activeTrackRef = useRef<RemoteTrack | LocalTrack | null>(null);
+  const lastFacingModeRef = useRef(cameraFacingMode);
+  const syncChainRef = useRef<Promise<void>>(Promise.resolve());
 
   const setVideoEl = useCallback((el: HTMLVideoElement | null) => {
     videoRef.current = el;
@@ -85,8 +93,12 @@ export default function LiveKitRoomWeb({
         onConnectionChange?.(true);
 
         if (isHost) {
-          await room.localParticipant.setCameraEnabled(true);
-          await room.localParticipant.setMicrophoneEnabled(true);
+          await room.localParticipant.setMicrophoneEnabled(isMicrophoneEnabled);
+          if (isCameraEnabled) {
+            await room.localParticipant.setCameraEnabled(true, {
+              facingMode: cameraFacingMode,
+            });
+          }
           if (cancelled) return;
           const pub = room.localParticipant.getTrackPublication(
             Track.Source.Camera
@@ -131,6 +143,57 @@ export default function LiveKitRoomWeb({
       onConnectionChange?.(false);
     };
   }, [isHost, onConnectionChange, onParticipantCountChange, retryKey, token, url]);
+
+  useEffect(() => {
+    if (!isHost) return;
+
+    syncChainRef.current = syncChainRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        const room = roomRef.current;
+        if (!room) return;
+
+        try {
+          await room.localParticipant.setMicrophoneEnabled(isMicrophoneEnabled);
+
+          const cameraPublication = room.localParticipant.getTrackPublication(
+            Track.Source.Camera
+          );
+
+          if (!isCameraEnabled) {
+            await room.localParticipant.setCameraEnabled(false);
+            lastFacingModeRef.current = cameraFacingMode;
+            return;
+          }
+
+          if (!cameraPublication?.videoTrack) {
+            await room.localParticipant.setCameraEnabled(true, {
+              facingMode: cameraFacingMode,
+            });
+            lastFacingModeRef.current = cameraFacingMode;
+            return;
+          }
+
+          const isCameraMuted = cameraPublication.track?.isMuted ?? false;
+          if (isCameraMuted) {
+            await room.localParticipant.setCameraEnabled(true, {
+              facingMode: cameraFacingMode,
+            });
+          } else if (lastFacingModeRef.current !== cameraFacingMode) {
+            await cameraPublication.videoTrack.restartTrack({
+              facingMode: cameraFacingMode,
+            });
+          }
+
+          lastFacingModeRef.current = cameraFacingMode;
+          setError(null);
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "Failed to update live controls";
+          setError(message);
+        }
+      });
+  }, [cameraFacingMode, isCameraEnabled, isHost, isMicrophoneEnabled]);
 
   if (error) {
     return (

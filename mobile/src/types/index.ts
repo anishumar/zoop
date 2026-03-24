@@ -33,6 +33,7 @@ export interface LiveSession {
   hostId: string;
   host: { id: string; name: string };
   sessionProducts?: { product: Product }[];
+  messages?: Message[];
 }
 
 export interface Message {

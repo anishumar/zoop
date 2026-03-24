@@ -4,9 +4,15 @@ import { ApiError } from "../utils/ApiError";
 // Simple in-memory rate limiter (swap with Redis in production)
 const requestCounts = new Map<string, { count: number; resetTime: number }>();
 
-export function rateLimiter(maxRequests = 100, windowMs = 60_000) {
+type RateLimitKeyFn = (req: Request) => string;
+
+export function rateLimiter(
+  maxRequests = 100,
+  windowMs = 60_000,
+  keyFn?: RateLimitKeyFn
+) {
   return (req: Request, _res: Response, next: NextFunction) => {
-    const key = req.ip || "unknown";
+    const key = keyFn?.(req) || req.ip || "unknown";
     const now = Date.now();
     const record = requestCounts.get(key);
 

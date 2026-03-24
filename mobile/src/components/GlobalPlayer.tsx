@@ -42,7 +42,7 @@ export default function GlobalPlayer() {
   };
 
   return (
-    <View style={[styles.container, containerStyle]} pointerEvents="auto">
+    <View style={[styles.container, containerStyle, { pointerEvents: "auto" }]}>
       <VideoPlayer
         streamType={streamType}
         streamUrl={activeSession.streamUrl}

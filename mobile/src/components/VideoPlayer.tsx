@@ -8,6 +8,9 @@ interface VideoPlayerProps {
   livekitToken?: string | null;
   livekitUrl?: string | null;
   isHost?: boolean;
+  isCameraEnabled?: boolean;
+  isMicrophoneEnabled?: boolean;
+  cameraFacingMode?: "user" | "environment";
   onConnectionChange?: (connected: boolean) => void;
   onParticipantCountChange?: (count: number) => void;
 }
@@ -18,6 +21,9 @@ export default function VideoPlayer({
   livekitToken,
   livekitUrl,
   isHost = false,
+  isCameraEnabled = true,
+  isMicrophoneEnabled = true,
+  cameraFacingMode = "user",
   onConnectionChange,
   onParticipantCountChange,
 }: VideoPlayerProps) {
@@ -28,6 +34,9 @@ export default function VideoPlayer({
           token={livekitToken}
           url={livekitUrl}
           isHost={isHost}
+          isCameraEnabled={isCameraEnabled}
+          isMicrophoneEnabled={isMicrophoneEnabled}
+          cameraFacingMode={cameraFacingMode}
           onConnectionChange={onConnectionChange}
           onParticipantCountChange={onParticipantCountChange}
         />

@@ -7,16 +7,16 @@ import {
   Alert,
   ScrollView,
   Platform,
-  Image,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Socket } from "socket.io-client";
 import { apiClient } from "../../src/api/client";
 import { connectSocket, disconnectSocket } from "../../src/api/socket";
-import { getLiveKitToken, LiveKitTokenResponse } from "../../src/api/livekit";
+import { getLiveKitToken } from "../../src/api/livekit";
 import VideoPlayer from "../../src/components/VideoPlayer";
 import HostControls from "../../src/components/HostControls";
+import ImageWithFallback from "../../src/components/ImageWithFallback";
 import { LiveSession, Product, Message, ApiResponse } from "../../src/types";
 import { AppTheme, useAppTheme } from "../../src/theme";
 
@@ -25,11 +25,14 @@ interface ProductListResponse {
   total: number;
 }
 
+const MAX_CHAT_MESSAGES = 200;
+
 export default function HostScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const sessionId = Array.isArray(id) ? id[0] : id;
   const router = useRouter();
   const socketRef = useRef<Socket | null>(null);
+  const socketCleanupRef = useRef<(() => void) | null>(null);
 
   const [session, setSession] = useState<LiveSession | null>(null);
   const [myProducts, setMyProducts] = useState<Product[]>([]);
@@ -64,6 +67,9 @@ export default function HostScreen() {
     fetchLiveKitToken();
 
     return () => {
+      socketCleanupRef.current?.();
+      socketCleanupRef.current = null;
+
       if (socketRef.current) {
         socketRef.current.emit("host_stream_ended", { sessionId });
         socketRef.current.emit("leave_live", sessionId);
@@ -88,6 +94,9 @@ export default function HostScreen() {
       if (!sessionId) return;
       const res = await apiClient<ApiResponse<LiveSession>>(`/sessions/${sessionId}`);
       setSession(res.data);
+      setMessages((res.data.messages || []).slice(0, MAX_CHAT_MESSAGES));
+      setReactionCount((res.data.messages || []).filter((msg) => msg.type === "reaction").length);
+      setViewerCount(res.data.viewerCount || 0);
     } catch (err: any) {
       Alert.alert("Error", err.message);
     }
@@ -106,20 +115,31 @@ export default function HostScreen() {
       const socket = await connectSocket();
       socketRef.current = socket;
 
+      socketCleanupRef.current?.();
+
+      const handleViewerCountUpdate = (data: { count: number }) => {
+        setViewerCount(data.count);
+      };
+
+      const handleNewReaction = (msg: Message) => {
+        setMessages((prev) => [msg, ...prev].slice(0, MAX_CHAT_MESSAGES));
+        setReactionCount((c) => c + 1);
+      };
+
+      const handleNewQuestion = (msg: Message) => {
+        setMessages((prev) => [msg, ...prev].slice(0, MAX_CHAT_MESSAGES));
+      };
+
+      socket.on("viewer_count_update", handleViewerCountUpdate);
+      socket.on("new_reaction", handleNewReaction);
+      socket.on("new_question", handleNewQuestion);
       socket.emit("join_live", sessionId);
 
-      socket.on("viewer_count_update", (data: { count: number }) => {
-        setViewerCount(data.count);
-      });
-
-      socket.on("new_reaction", (msg: Message) => {
-        setMessages((prev) => [msg, ...prev]);
-        setReactionCount((c) => c + 1);
-      });
-
-      socket.on("new_question", (msg: Message) => {
-        setMessages((prev) => [msg, ...prev]);
-      });
+      socketCleanupRef.current = () => {
+        socket.off("viewer_count_update", handleViewerCountUpdate);
+        socket.off("new_reaction", handleNewReaction);
+        socket.off("new_question", handleNewQuestion);
+      };
     } catch (err) {
       console.error("Socket connection failed:", err);
     }
@@ -234,6 +254,9 @@ export default function HostScreen() {
             livekitToken={lkToken}
             livekitUrl={lkUrl}
             isHost={true}
+            isCameraEnabled={isCameraOn}
+            isMicrophoneEnabled={isMicOn}
+            cameraFacingMode={isFrontCamera ? "user" : "environment"}
             onConnectionChange={handleConnectionChange}
             onParticipantCountChange={handleParticipantCount}
           />
@@ -269,11 +292,12 @@ export default function HostScreen() {
         {session?.sessionProducts && session.sessionProducts.length > 0 ? (
           session.sessionProducts.map((sp) => (
             <View key={sp.product.id} style={styles.showcasedProduct}>
-              {sp.product.imageUrl ? (
-                <Image source={{ uri: sp.product.imageUrl }} style={styles.productThumb} />
-              ) : (
-                <Text style={styles.productEmoji}>📦</Text>
-              )}
+              <ImageWithFallback
+                uri={sp.product.imageUrl}
+                style={styles.productThumb}
+                fallbackText="📦"
+                fallbackStyle={styles.productEmoji}
+              />
               <View style={styles.productInfo}>
                 <Text style={styles.productTitle}>{sp.product.title}</Text>
                 <Text style={styles.productPrice}>${sp.product.price.toFixed(2)}</Text>
@@ -299,11 +323,12 @@ export default function HostScreen() {
                 style={styles.addProductRow}
                 onPress={() => handleAddProduct(product.id)}
               >
-              {product.imageUrl ? (
-                <Image source={{ uri: product.imageUrl }} style={styles.productThumb} />
-              ) : (
-                <Text style={styles.productEmoji}>📦</Text>
-              )}
+              <ImageWithFallback
+                uri={product.imageUrl}
+                style={styles.productThumb}
+                fallbackText="📦"
+                fallbackStyle={styles.productEmoji}
+              />
               <View style={styles.productInfo}>
                 <Text style={styles.productTitle}>{product.title}</Text>
                 <Text style={styles.productPrice}>${product.price.toFixed(2)}</Text>

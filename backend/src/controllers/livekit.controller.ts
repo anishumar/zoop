@@ -1,6 +1,5 @@
 import { Request, Response } from "express";
 import { LiveKitService } from "../services/livekit.service";
-import { SessionService } from "../services/session.service";
 import { catchAsync } from "../utils/catchAsync";
 import { sendSuccess } from "../utils/ApiResponse";
 import { ApiError } from "../utils/ApiError";
@@ -21,6 +20,9 @@ export const getToken = catchAsync(async (req: Request, res: Response) => {
   });
   if (!session) throw new ApiError(404, "Session not found");
   if (!session.isLive) throw new ApiError(400, "Session is not live");
+  if (session.streamType === "livekit" && !session.roomName) {
+    throw new ApiError(503, "Live room is not ready yet");
+  }
 
   const userId = req.user!.userId;
   const user = await prisma.user.findUnique({
@@ -30,7 +32,7 @@ export const getToken = catchAsync(async (req: Request, res: Response) => {
   if (!user) throw new ApiError(404, "User not found");
 
   const isHost = session.hostId === userId;
-  const roomName = `session-${sessionId}`;
+  const roomName = session.roomName || `session-${sessionId}`;
 
   const token = await LiveKitService.createToken(
     roomName,
@@ -43,7 +45,7 @@ export const getToken = catchAsync(async (req: Request, res: Response) => {
     res,
     {
       token,
-      url: process.env.LIVEKIT_URL || "ws://localhost:7880",
+      url: session.streamUrl || process.env.LIVEKIT_URL || "ws://localhost:7880",
       roomName,
       isHost,
     },
