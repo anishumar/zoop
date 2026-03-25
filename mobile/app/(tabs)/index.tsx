@@ -145,18 +145,30 @@ export default function HomeScreen() {
         activeOpacity={0.7}
       >
         <View style={styles.sessionVideoPlaceholder}>
+          {item.thumbnailUrl ? (
+            <Image source={{ uri: item.thumbnailUrl }} style={styles.thumbnailImage} />
+          ) : (
+            <Ionicons name="videocam" size={48} color={theme.textMuted} />
+          )}
+
           {item.isLive ? (
             <View style={styles.liveBadge}>
               <View style={styles.liveDot} />
               <Text style={styles.liveText}>LIVE</Text>
             </View>
           ) : item.recordingUrl ? (
-            <View style={[styles.liveBadge, { backgroundColor: "rgba(30, 41, 59, 0.8)" }]}>
-              <Ionicons name="play-circle" size={12} color="#fff" style={{ marginRight: 4 }} />
-              <Text style={styles.liveText}>RECORDED</Text>
-            </View>
+            <>
+              <View style={[styles.liveBadge, { backgroundColor: "rgba(15, 23, 42, 0.75)" }]}>
+                <Ionicons name="play-circle" size={14} color="#fff" style={{ marginRight: 6 }} />
+                <Text style={styles.liveText}>RECORDED</Text>
+              </View>
+              {item.thumbnailUrl && (
+                <View style={styles.playOverlay}>
+                  <Ionicons name="play" size={32} color="#fff" />
+                </View>
+              )}
+            </>
           ) : null}
-          <Ionicons name="videocam" size={48} color={theme.textMuted} />
         </View>
         <View style={styles.sessionInfo}>
           <Text style={styles.sessionTitle} numberOfLines={1}>{item.title}</Text>
@@ -373,6 +385,18 @@ const createStyles = (theme: AppTheme) =>
   sessionVideoPlaceholder: {
     height: 180,
     backgroundColor: theme.surfaceAlt,
+    justifyContent: "center",
+    alignItems: "center",
+    position: "relative",
+  },
+  thumbnailImage: {
+    ...StyleSheet.absoluteFillObject,
+    width: "100%",
+    height: "100%",
+  },
+  playOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.2)",
     justifyContent: "center",
     alignItems: "center",
   },

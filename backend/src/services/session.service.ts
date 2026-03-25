@@ -75,6 +75,7 @@ export class SessionService {
 
   static async listLive(page = 1, limit = 20) {
     const skip = (page - 1) * limit;
+
     const [sessions, total] = await Promise.all([
       prisma.liveSession.findMany({
         where: { isLive: true },
@@ -82,7 +83,7 @@ export class SessionService {
         take: limit,
         orderBy: { startedAt: "desc" },
         include: {
-          host: { select: { id: true, name: true } },
+          host: { select: { id: true, name: true, avatarUrl: true } },
           sessionProducts: { include: { product: true } },
         },
       }),
