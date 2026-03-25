@@ -57,20 +57,11 @@ export default function VideoPlayer({
 
   if (streamType === "vod" && streamUrl) {
     return (
-      <View style={[
-        styles.wrapper,
-        isFullscreen && styles.wrapperFullscreen,
-        isMini && styles.wrapperMini
-      ]}>
-        <Video
-          source={{ uri: streamUrl }}
-          style={StyleSheet.absoluteFill}
-          resizeMode={ResizeMode.CONTAIN}
-          shouldPlay={true}
-          isLooping={true}
-          useNativeControls={!isMini}
-        />
-      </View>
+      <VodPlayer 
+        streamUrl={streamUrl} 
+        isFullscreen={isFullscreen} 
+        isMini={isMini} 
+      />
     );
   }
 
@@ -79,6 +70,79 @@ export default function VideoPlayer({
   }
 
   return <MockVideoPlayer isFullscreen={isFullscreen} />;
+}
+
+// ------------------------------------------------------------------
+// Sub-components
+// ------------------------------------------------------------------
+
+function VodPlayer({ streamUrl, isFullscreen, isMini }: { streamUrl: string, isFullscreen?: boolean, isMini?: boolean }) {
+  const [isBuffering, setIsBuffering] = React.useState(true);
+  const [position, setPosition] = React.useState(0);
+  const [duration, setDuration] = React.useState(0);
+
+  const formatTime = (millis: number) => {
+    if (!millis || isNaN(millis)) return "00:00";
+    const totalSeconds = Math.floor(millis / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  const progressPercent = duration > 0 ? (position / duration) * 100 : 0;
+
+  return (
+    <View style={[
+      styles.wrapper,
+      isFullscreen && styles.wrapperFullscreen,
+      isMini && styles.wrapperMini
+    ]}>
+      <Video
+        source={{ uri: streamUrl }}
+        style={StyleSheet.absoluteFill}
+        resizeMode={ResizeMode.CONTAIN}
+        shouldPlay={true}
+        isLooping={false}
+        useNativeControls={!isMini} // Native controls are enabled, but we also overlay our own
+        onLoad={(status) => {
+          if (status.isLoaded) {
+            setDuration(status.durationMillis || 0);
+            setIsBuffering(false);
+          }
+        }}
+        onPlaybackStatusUpdate={(status) => {
+          if (status.isLoaded) {
+            setPosition(status.positionMillis);
+            setDuration(status.durationMillis || 0);
+            setIsBuffering(status.isBuffering);
+          } else if ("error" in status && status.error) {
+            console.error("[VideoPlayer] VOD playback error:", status.error);
+            setIsBuffering(false);
+          }
+        }}
+      />
+      
+      {/* Loading indicator that ONLY shows when actually buffering */}
+      {isBuffering && (
+        <View style={[StyleSheet.absoluteFill, { justifyContent: "center", alignItems: "center" }]} pointerEvents="none">
+          <ActivityIndicator size="large" color="rgba(255,255,255,0.8)" />
+        </View>
+      )}
+
+      {/* Progress Bar & Timing Overlay (Hidden in mini-player) */}
+      {!isMini && duration > 0 && (
+        <View style={styles.progressOverlay} pointerEvents="none">
+          <View style={styles.timeContainer}>
+            <Text style={styles.timeText} allowFontScaling={false}>{formatTime(position)}</Text>
+            <Text style={styles.timeText} allowFontScaling={false}>{formatTime(duration)}</Text>
+          </View>
+          <View style={styles.progressBarTrack}>
+            <View style={[styles.progressBarFill, { width: `${progressPercent}%` }]} />
+          </View>
+        </View>
+      )}
+    </View>
+  );
 }
 
 
@@ -145,5 +209,35 @@ const styles = StyleSheet.create({
     color: "#94a3b8",
     fontSize: 13,
     marginTop: 4,
+  },
+  progressOverlay: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 16,
+    paddingBottom: 24, // Extra padding for safe area / native controls clearance
+    backgroundColor: "rgba(0,0,0,0.4)", // Slight gradient/darkening behind text
+  },
+  timeContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  timeText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "600",
+    fontVariant: ["tabular-nums"], // Keeps time characters monospaced
+  },
+  progressBarTrack: {
+    height: 4,
+    backgroundColor: "rgba(255,255,255,0.3)",
+    borderRadius: 2,
+    overflow: "hidden",
+  },
+  progressBarFill: {
+    height: "100%",
+    backgroundColor: "#3b82f6", // Zoop blue
   },
 });

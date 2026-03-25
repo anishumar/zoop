@@ -120,6 +120,7 @@ export const handleWebhook = catchAsync(async (req: Request, res: Response) => {
       break;
     }
     case "participant_joined": {
+      if (!roomName || !sessionId) break;
       const count = await LiveKitService.getParticipantCount(roomName);
       await prisma.liveSession.update({
         where: { id: sessionId },
@@ -128,6 +129,7 @@ export const handleWebhook = catchAsync(async (req: Request, res: Response) => {
       break;
     }
     case "track_published": {
+      if (!roomName || !sessionId) break;
       const participantIdentity = event.participant?.identity;
       const session = await prisma.liveSession.findUnique({
         where: { id: sessionId },
@@ -142,7 +144,7 @@ export const handleWebhook = catchAsync(async (req: Request, res: Response) => {
           emptyTimeout: 300,
           maxParticipants: 10000,
         });
-        const egressId = await LiveKitService.startRoomRecording(roomName, sessionId);
+        const egressId = await LiveKitService.startRoomRecording(roomName, sessionId, session.hostId);
         if (egressId) {
           console.log(`[Webhook] Egress started successfully: ${egressId}`);
           await prisma.liveSession.update({
@@ -154,6 +156,7 @@ export const handleWebhook = catchAsync(async (req: Request, res: Response) => {
       break;
     }
     case "participant_left": {
+      if (!roomName || !sessionId) break;
       const count = await LiveKitService.getParticipantCount(roomName);
       await prisma.liveSession.update({
         where: { id: sessionId },

@@ -70,9 +70,9 @@ export default function ViewerScreen() {
   const effectiveUrl = lkUrl ?? (playerActiveSession?.id === session?.id ? playerLkUrl : null);
 
   function handleBack() {
-    console.log("handleBack called, session:", session?.id, "streamEnded:", streamEnded);
-    // Only minimize for active live sessions
-    if (session && session.isLive && !streamEnded) {
+    console.log("handleBack called, session:", session?.id, "streamEnded:", streamEnded, "isVod:", isVod);
+    // Only minimize for active live sessions (never for VOD)
+    if (session && session.isLive && !streamEnded && !isVod) {
       console.log("Minimizing player...");
       isMinimizing.current = true;
       openPlayer(session, effectiveToken, effectiveUrl, true);
@@ -106,7 +106,9 @@ export default function ViewerScreen() {
   }, [id]);
 
   useEffect(() => {
+    // Skip PlayerContext for VOD — it doesn't use LiveKit or sockets
     if (!session || isMinimizing.current || streamEnded) return;
+    if (!session.isLive && session.recordingUrl) return; // VOD: skip openPlayer
     openPlayer(session, effectiveToken, effectiveUrl);
   }, [effectiveToken, effectiveUrl, openPlayer, session, streamEnded]);
 
@@ -148,6 +150,9 @@ export default function ViewerScreen() {
       setSession(res.data);
       setMessages((res.data.messages || []).slice(0, MAX_CHAT_MESSAGES));
       setViewerCount(res.data.viewerCount || 0);
+
+      const sessionIsVod = !res.data.isLive && !!res.data.recordingUrl;
+      console.log(`[Viewer] Session loaded: isLive=${res.data.isLive}, recordingUrl=${res.data.recordingUrl}, isVod=${sessionIsVod}`);
 
       if (res.data.isLive) {
         setupSocket();
@@ -270,6 +275,9 @@ export default function ViewerScreen() {
   const isVod = !session?.isLive && !!session?.recordingUrl;
   const streamType = isVod ? "vod" : ((session?.streamType as "mock" | "livekit") || "livekit");
   const displayStreamUrl = isVod ? session?.recordingUrl : session?.streamUrl;
+
+  // Debug: log what stream type and URL we're using
+  console.log(`[Viewer] Render: streamType=${streamType}, isVod=${isVod}, url=${displayStreamUrl?.substring(0, 80)}...`);
 
   const handleConnectionChange = (connected: boolean) => {
     setStreamConnected(connected);

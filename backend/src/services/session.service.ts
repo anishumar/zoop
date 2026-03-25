@@ -23,7 +23,7 @@ export class SessionService {
           emptyTimeout: 300,
           maxParticipants: 10000,
         });
-        const egressId = await LiveKitService.startRoomRecording(roomName, session.id);
+        const egressId = await LiveKitService.startRoomRecording(roomName, session.id, hostId);
         return prisma.liveSession.update({
           where: { id: session.id },
           data: {

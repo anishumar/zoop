@@ -32,9 +32,10 @@ const webhookReceiver = process.env.LIVEKIT_API_KEY
 
 export class LiveKitService {
   /**
-   * Start recording a room to Cloudflare R2.
+   * Start recording a host's streams directly to Cloudflare R2 (Participant Egress).
+   * This is much faster than RoomCompositeEgress because it doesn't spin up a headless browser.
    */
-  static async startRoomRecording(roomName: string, sessionId: string) {
+  static async startRoomRecording(roomName: string, sessionId: string, hostIdentity: string) {
     const bucket = process.env.R2_BUCKET;
     const accountId = process.env.R2_ACCOUNT_ID;
     const accessKey = process.env.R2_ACCESS_KEY;
@@ -52,37 +53,42 @@ export class LiveKitService {
 
     try {
       const output = {
-        filepath: `recordings/${sessionId}.mp4`,
-        fileType: 1, // MP4 = 1
-        output: {
-          case: "s3",
-          value: {
-            bucket,
-            accessKey,
-            secret,
-            endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
-            region: "auto",
-            forcePathStyle: true,
+        file: {
+          filepath: `recordings/${sessionId}.mp4`,
+          fileType: 1, // MP4 = 1
+          output: {
+            case: "s3" as const,
+            value: {
+              bucket,
+              accessKey,
+              secret,
+              endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+              region: "auto",
+              forcePathStyle: true,
+            },
           },
-        },
+        }
       };
 
-      console.log(`[Egress] Starting room composite for ${roomName} with nested S3 output.`);
+      console.log(`[Egress] Starting participant egress for room ${roomName}, host: ${hostIdentity}`);
 
-      const info = await egressClient.startRoomCompositeEgress(
+      // Use ParticipantEgress to directly record the host's tracks
+      const info = await egressClient.startParticipantEgress(
         roomName,
+        hostIdentity,
         output as any,
-        { 
-          layout: "grid",
+        {
+          screenShare: false, 
           encodingOptions: {
             width: 720,
             height: 1280,
+            videoBitrate: 1500, // Optimize bitrate for mobile
           } as any
         }
       );
       return info.egressId;
     } catch (err: any) {
-      console.error("Failed to start LiveKit Egress:", {
+      console.error("Failed to start LiveKit Participant Egress:", {
         message: err.message,
         roomName,
         sessionId,
