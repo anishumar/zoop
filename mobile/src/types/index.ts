@@ -11,6 +11,7 @@ export interface User {
 export interface Product {
   id: string;
   title: string;
+  description?: string | null;
   price: number;
   quantity: number;
   sizes: string[];

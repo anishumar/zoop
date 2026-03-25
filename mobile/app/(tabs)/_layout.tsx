@@ -31,7 +31,13 @@ export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
-        headerStyle: { backgroundColor: theme.background },
+        headerStyle: { 
+          backgroundColor: theme.background,
+          elevation: 0, // Remove shadow on Android
+          shadowOpacity: 0, // Remove shadow on iOS
+          borderBottomWidth: 0, // Remove border on Web
+        },
+        headerShadowVisible: false, // Ensures native header shadow is completely disabled
         headerTintColor: theme.text,
         headerTitleStyle: { fontWeight: "700" },
         tabBarStyle: { backgroundColor: theme.background, borderTopColor: theme.border },

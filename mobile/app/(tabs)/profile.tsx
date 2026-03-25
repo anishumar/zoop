@@ -77,6 +77,7 @@ export default function ProfileScreen() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [actionProduct, setActionProduct] = useState<Product | null>(null);
   const [prodTitle, setProdTitle] = useState("");
+  const [prodDescription, setProdDescription] = useState("");
   const [prodPrice, setProdPrice] = useState("");
   const [prodQuantity, setProdQuantity] = useState("1");
   const [prodSizes, setProdSizes] = useState<string[]>([]);
@@ -164,6 +165,7 @@ export default function ProfileScreen() {
     setShowProductForm(false);
     setEditingProduct(null);
     setProdTitle("");
+    setProdDescription("");
     setProdPrice("");
     setProdQuantity("1");
     setProdSizes([]);
@@ -178,6 +180,7 @@ export default function ProfileScreen() {
   function openEditProductModal(product: Product) {
     setEditingProduct(product);
     setProdTitle(product.title);
+    setProdDescription(product.description || "");
     setProdPrice(String(product.price));
     setProdQuantity(String(product.quantity));
     setProdSizes(product.sizes ?? []);
@@ -200,11 +203,11 @@ export default function ProfileScreen() {
       const productRes = editingProduct
         ? await apiClient<ApiResponse<Product>>(`/products/${editingProduct.id}`, {
           method: "PUT",
-          body: { title: prodTitle.trim(), price: priceNum, quantity: quantityNum, sizes: prodSizes },
+          body: { title: prodTitle.trim(), description: prodDescription.trim() || undefined, price: priceNum, quantity: quantityNum, sizes: prodSizes },
         })
         : await apiClient<ApiResponse<Product>>("/products", {
           method: "POST",
-          body: { title: prodTitle.trim(), price: priceNum, quantity: quantityNum, sizes: prodSizes },
+          body: { title: prodTitle.trim(), description: prodDescription.trim() || undefined, price: priceNum, quantity: quantityNum, sizes: prodSizes },
         });
 
       if (prodImage) {
@@ -382,7 +385,7 @@ export default function ProfileScreen() {
     return (
       <TouchableOpacity
         style={[styles.streamCard, deletingStreamId === item.id && { opacity: 0.5 }]}
-        onPress={() => router.push(`/viewer/${item.id}`)}
+        onPress={() => router.push(`/reels?startId=${item.id}&source=profile&hostId=${user?.id}`)}
         onLongPress={() => setActionStream(item)}
         activeOpacity={0.7}
       >
@@ -485,6 +488,16 @@ export default function ProfileScreen() {
 
                 <Text style={styles.label}>Name</Text>
                 <TextInput style={styles.input} placeholder="Enter product name" placeholderTextColor="#64748b" value={prodTitle} onChangeText={setProdTitle} />
+
+                <Text style={styles.label}>Description (Optional)</Text>
+                <TextInput 
+                  style={[styles.input, { minHeight: 80, textAlignVertical: "top", paddingTop: 16 }]} 
+                  placeholder="Tell buyers about this product..." 
+                  placeholderTextColor="#64748b"
+                  value={prodDescription} 
+                  onChangeText={setProdDescription} 
+                  multiline 
+                />
 
                 <Text style={styles.label}>Price (₹)</Text>
                 <TextInput style={styles.input} placeholder="₹0" placeholderTextColor="#64748b" value={prodPrice} onChangeText={setProdPrice} keyboardType="decimal-pad" />
@@ -843,17 +856,28 @@ const createStyles = (theme: AppTheme) =>
     createText: { color: theme.textOnAccent, fontWeight: "700", fontSize: 16 },
 
     // Grid
-    gridList: { paddingHorizontal: GRID_PADDING, paddingBottom: 100 },
+    gridList: { paddingHorizontal: GRID_PADDING, paddingTop: 16, paddingBottom: 100 },
     gridRow: { justifyContent: "space-between", marginBottom: GRID_GAP },
-    gridCard: { width: CARD_WIDTH, backgroundColor: theme.surface, borderRadius: 14, overflow: "hidden" },
-    gridImageWrapper: { width: "100%", height: CARD_WIDTH, backgroundColor: theme.surfaceAlt },
+    gridCard: { 
+      width: CARD_WIDTH, 
+      backgroundColor: theme.surface, 
+      borderRadius: 16, 
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: theme.border,
+      // Subtle shadow for depth
+      ...(Platform.OS === "ios"
+        ? { shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 8 }
+        : { elevation: 2 }),
+    },
+    gridImageWrapper: { width: "100%", aspectRatio: 1, backgroundColor: theme.surfaceAlt },
     gridImage: { width: "100%", height: "100%" },
     gridImagePlaceholder: { width: "100%", height: "100%", justifyContent: "center", alignItems: "center" },
-    gridCardInfo: { padding: 10 },
-    gridCardTitle: { fontSize: 14, fontWeight: "600", color: theme.text },
-    gridCardPrice: { fontSize: 15, fontWeight: "800", color: theme.accent, marginTop: 3 },
-    gridCardMeta: { flexDirection: "row", gap: 8, marginTop: 4, flexWrap: "wrap" },
-    gridCardMetaText: { fontSize: 11, color: theme.textMuted, fontWeight: "500" },
+    gridCardInfo: { padding: 12 },
+    gridCardTitle: { fontSize: 14, fontWeight: "600", color: theme.text, marginBottom: 4 },
+    gridCardPrice: { fontSize: 15, fontWeight: "800", color: theme.accent },
+    gridCardMeta: { flexDirection: "row", gap: 8, marginTop: 6, flexWrap: "wrap" },
+    gridCardMetaText: { fontSize: 12, color: theme.textMuted, fontWeight: "500" },
 
     // Empty States
     emptyContent: { alignItems: "center", paddingTop: 48, paddingHorizontal: 32 },
@@ -872,14 +896,18 @@ const createStyles = (theme: AppTheme) =>
     streamCard: {
       width: CARD_WIDTH,
       backgroundColor: theme.surface,
-      borderRadius: 14,
+      borderRadius: 16,
       overflow: "hidden",
       borderWidth: 1,
       borderColor: theme.border,
+      // Subtle shadow for depth matching gridCard
+      ...(Platform.OS === "ios"
+        ? { shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 8 }
+        : { elevation: 2 }),
     },
     streamThumbnail: {
       width: "100%",
-      height: CARD_WIDTH * 0.75, // Aspect ratio for stream thumbs
+      aspectRatio: 16/9, // Better native aspect ratio for stream thumbs
       backgroundColor: theme.surfaceAlt,
       position: "relative",
     },
@@ -901,16 +929,17 @@ const createStyles = (theme: AppTheme) =>
       zIndex: 1,
     },
     streamInfo: {
-      padding: 10,
+      padding: 12, // Matched with gridCardInfo
     },
     streamTitle: {
       fontSize: 14,
       fontWeight: "600",
       color: theme.text,
+      marginBottom: 4,
     },
     streamDate: {
       fontSize: 12,
       color: theme.textMuted,
-      marginTop: 3,
+      fontWeight: "500",
     },
   });

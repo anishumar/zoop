@@ -200,7 +200,11 @@ export default function HomeScreen() {
       <TouchableOpacity
         style={styles.sessionCard}
         onPress={() => {
-          router.push(isOwn ? `/host/${item.id}` : `/viewer/${item.id}`);
+          if (isOwn) {
+            router.push(`/host/${item.id}`);
+          } else {
+            router.push(`/stream-feed?tab=${activeTab}&startId=${item.id}`);
+          }
         }}
         activeOpacity={0.7}
       >

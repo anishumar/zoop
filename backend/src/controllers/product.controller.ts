@@ -28,7 +28,7 @@ function sanitizeSizes(value: unknown) {
 }
 
 export const createProduct = catchAsync(async (req: Request, res: Response) => {
-  const { title, price, quantity, sizes } = req.body;
+  const { title, description, price, quantity, sizes } = req.body;
   if (!title || price === undefined || quantity === undefined || sizes === undefined) {
     throw new ApiError(400, "Title, price, quantity and sizes are required");
   }
@@ -47,6 +47,7 @@ export const createProduct = catchAsync(async (req: Request, res: Response) => {
 
   const product = await ProductService.create(req.user!.userId, {
     title,
+    description,
     price: parsedPrice,
     quantity: parsedQuantity,
     sizes: parsedSizes,
@@ -92,17 +93,22 @@ export const generateProductAiSummary = catchAsync(async (req: Request, res: Res
 });
 
 export const updateProduct = catchAsync(async (req: Request, res: Response) => {
-  const { title, price, quantity, sizes } = req.body as {
+  const { title, description, price, quantity, sizes } = req.body as {
     title?: string;
+    description?: string;
     price?: number | string;
     quantity?: number | string;
     sizes?: string[];
   };
 
-  const updateData: { title?: string; price?: number; quantity?: number; sizes?: string[] } = {};
+  const updateData: { title?: string; description?: string; price?: number; quantity?: number; sizes?: string[] } = {};
 
   if (title !== undefined) {
     updateData.title = title;
+  }
+
+  if (description !== undefined) {
+    updateData.description = description;
   }
 
   if (price !== undefined) {

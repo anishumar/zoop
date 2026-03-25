@@ -4,7 +4,7 @@ import { ApiError } from "../utils/ApiError";
 export class ProductService {
   static async create(
     ownerId: string,
-    data: { title: string; price: number; quantity: number; sizes: string[] }
+    data: { title: string; description?: string; price: number; quantity: number; sizes: string[] }
   ) {
     return prisma.product.create({
       data: { ...data, ownerId },
@@ -34,7 +34,7 @@ export class ProductService {
   static async update(
     id: string,
     ownerId: string,
-    data: Partial<{ title: string; price: number; quantity: number; sizes: string[] }>
+    data: Partial<{ title: string; description: string; price: number; quantity: number; sizes: string[] }>
   ) {
     const product = await prisma.product.findUnique({ where: { id } });
     if (!product) throw new ApiError(404, "Product not found");
