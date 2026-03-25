@@ -21,7 +21,9 @@ import {
 const SCREEN_WIDTH = Dimensions.get("window").width;
 import { useRouter, useFocusEffect, Stack } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { apiClient } from "../../src/api/client";
+import { uploadReelVideo } from "../../src/api/uploads";
 import { LiveSession, ApiResponse } from "../../src/types";
 import { AppTheme, useAppTheme } from "../../src/theme";
 import { useAuth } from "../../src/contexts/AuthContext";
@@ -43,10 +45,15 @@ export default function HomeScreen() {
   const [followingSessions, setFollowingSessions] = useState<LiveSession[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [showGoLive, setShowGoLive] = useState(false);
+  const [showReelForm, setShowReelForm] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [showCreateMenu, setShowCreateMenu] = useState(false);
   const [sessionTitle, setSessionTitle] = useState("");
+  const [reelTitle, setReelTitle] = useState("");
+  const [reelDescription, setReelDescription] = useState("");
+  const [reelVideo, setReelVideo] = useState<{ uri: string; mimeType: string; fileSize: number } | null>(null);
   const [creating, setCreating] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const theme = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const router = useRouter();
@@ -169,6 +176,76 @@ export default function HomeScreen() {
   function handlePageChange(e: any) {
     const page = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
     setActiveTab(page === 0 ? "live" : "following");
+  }
+
+  function resetReelForm() {
+    setReelTitle("");
+    setReelDescription("");
+    setReelVideo(null);
+    setShowReelForm(false);
+  }
+
+  async function handlePickReel(source: "camera" | "gallery") {
+    const permission = source === "camera" 
+      ? await ImagePicker.requestCameraPermissionsAsync() 
+      : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permission.granted) {
+      Alert.alert("Permission required", `Please allow access to your ${source === "camera" ? "camera" : "gallery"} to create a reel.`);
+      return;
+    }
+
+    const options: ImagePicker.ImagePickerOptions = {
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      allowsEditing: true,
+      quality: 0.8,
+      videoMaxDuration: 60,
+    };
+
+    const result = source === "camera"
+      ? await ImagePicker.launchCameraAsync(options)
+      : await ImagePicker.launchImageLibraryAsync(options);
+
+    if (!result.canceled && result.assets[0]) {
+      const asset = result.assets[0];
+      setReelVideo({
+        uri: asset.uri,
+        mimeType: asset.mimeType || "video/mp4",
+        fileSize: asset.fileSize || 0,
+      });
+      setShowReelForm(true);
+    }
+  }
+
+  async function handlePostReel() {
+    if (!reelTitle.trim() || !reelVideo) {
+      Alert.alert("Error", "Title and video are required");
+      return;
+    }
+
+    setUploading(true);
+    try {
+      // 1. Upload video to R2
+      const { videoUrl } = await uploadReelVideo(reelVideo);
+
+      // 2. Create session in backend
+      await apiClient("/sessions/reel", {
+        method: "POST",
+        body: {
+          title: reelTitle.trim(),
+          description: reelDescription.trim() || undefined,
+          recordingUrl: videoUrl,
+        },
+      });
+
+      Alert.alert("Success", "Your reel has been posted!");
+      resetReelForm();
+      handleRefresh();
+    } catch (err: any) {
+      Alert.alert("Upload Failed", err.message || "Something went wrong");
+    } finally {
+      setUploading(false);
+    }
   }
 
   async function handleGoLive() {
@@ -459,9 +536,64 @@ export default function HomeScreen() {
         onClose={() => setShowCreateMenu(false)} 
         onAction={(action) => {
           if (action === "go_live") setShowGoLive(true);
-          if (action === "create_reel") Alert.alert("Create Reel", "Coming soon!");
+          if (action === "create_reel") {
+            Alert.alert("Create Reel", "Choose video source", [
+              { text: "Camera", onPress: () => handlePickReel("camera") },
+              { text: "Gallery", onPress: () => handlePickReel("gallery") },
+              { text: "Cancel", style: "cancel" },
+            ]);
+          }
         }}
       />
+
+      {/* Reel Metadata Modal */}
+      <Modal visible={showReelForm} transparent animationType="slide" onRequestClose={resetReelForm}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+          <View style={styles.modalOverlay}>
+            <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={resetReelForm} />
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Post a Reel</Text>
+                <TouchableOpacity onPress={resetReelForm}>
+                  <Ionicons name="close" size={24} color={theme.text} />
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.label}>Title</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="Give your reel a title..."
+                placeholderTextColor={theme.textMuted}
+                value={reelTitle}
+                onChangeText={setReelTitle}
+              />
+
+              <Text style={[styles.label, { marginTop: 16 }]}>Description (Optional)</Text>
+              <TextInput
+                style={[styles.modalInput, { minHeight: 100, textAlignVertical: "top" }]}
+                placeholder="What's this reel about?"
+                placeholderTextColor={theme.textMuted}
+                value={reelDescription}
+                onChangeText={setReelDescription}
+                multiline
+              />
+
+              <View style={styles.uploadProgressContainer}>
+                {uploading ? (
+                  <View style={{ alignItems: "center", gap: 8 }}>
+                    <ActivityIndicator color={theme.accent} size="large" />
+                    <Text style={{ color: theme.textMuted }}>Uploading your reel...</Text>
+                  </View>
+                ) : (
+                  <TouchableOpacity style={styles.modalConfirm} onPress={handlePostReel}>
+                    <Text style={styles.modalConfirmText}>Post Reel</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -593,6 +725,9 @@ const createStyles = (theme: AppTheme) =>
     borderColor: theme.border,
   },
   modalButtons: { flexDirection: "row", marginTop: 20, gap: 12 },
+  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
+  label: { fontSize: 14, fontWeight: "600", color: theme.textMuted, marginBottom: 8 },
+  uploadProgressContainer: { marginTop: 24, minHeight: 60, justifyContent: "center" },
   modalCancel: {
     flex: 1,
     padding: 16,

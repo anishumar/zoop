@@ -76,6 +76,7 @@ model Product {
 model LiveSession {
   id           String   @id @default(uuid())
   title        String   @default("Live Session")
+  description  String?
   isLive       Boolean  @default(false)
   startedAt    DateTime?
   endedAt      DateTime?

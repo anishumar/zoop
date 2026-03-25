@@ -12,6 +12,7 @@ import {
   generateAiReplySuggestion,
   generateAiEngagementSummary,
   getUserArchivedSessions,
+  uploadReel,
 } from "../controllers/session.controller";
 import { authenticate } from "../middlewares/auth";
 import { rateLimiter } from "../middlewares/rateLimiter";
@@ -57,6 +58,12 @@ router.delete(
   rateLimiter(120, 60_000, (req) => req.user?.userId || req.ip || "unknown"),
   removeProductFromSession
 );
+router.post(
+  "/reel",
+  rateLimiter(10, 60_000, (req) => req.user?.userId || req.ip || "unknown"),
+  uploadReel
+);
+
 router.delete(
   "/:id",
   rateLimiter(30, 60_000, (req) => req.user?.userId || req.ip || "unknown"),

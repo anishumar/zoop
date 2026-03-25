@@ -115,3 +115,19 @@ export const deleteSession = catchAsync(async (req: Request, res: Response) => {
   await SessionService.deleteSession(String(req.params.id), req.user!.userId);
   sendSuccess(res, null, "Session deleted");
 });
+
+export const uploadReel = catchAsync(async (req: Request, res: Response) => {
+  const { title, description, recordingUrl } = req.body;
+  
+  if (!title || !recordingUrl) {
+    throw new ApiError(400, "Title and recordingUrl are required");
+  }
+
+  const session = await SessionService.createReel(req.user!.userId, {
+    title,
+    description,
+    recordingUrl,
+  });
+
+  sendSuccess(res, session, "Reel posted successfully", 201);
+});

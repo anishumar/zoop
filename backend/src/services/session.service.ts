@@ -2,15 +2,17 @@ import prisma from "../prisma/client";
 import { ApiError } from "../utils/ApiError";
 import { LiveKitService } from "./livekit.service";
 import { StorageService } from "./storage.service";
+import { generateThumbnailBackground } from "../utils/ffmpeg";
 
 export class SessionService {
-  static async create(hostId: string, data: { title?: string; streamType?: string }) {
+  static async create(hostId: string, data: { title?: string; description?: string; streamType?: string }) {
     const streamType = data.streamType || "livekit";
 
     const session = await prisma.liveSession.create({
       data: {
         hostId,
         title: data.title || "Live Session",
+        description: data.description,
         streamType,
         isLive: false,
       },
@@ -52,6 +54,29 @@ export class SessionService {
       },
       include: { host: { select: { id: true, name: true, email: true } } },
     });
+  }
+
+  static async createReel(hostId: string, data: { title: string; description?: string; recordingUrl: string }) {
+    const session = await prisma.liveSession.create({
+      data: {
+        hostId,
+        title: data.title,
+        description: data.description,
+        isLive: false,
+        recordingUrl: data.recordingUrl,
+        streamType: "vod",
+        startedAt: new Date(),
+        endedAt: new Date(),
+      },
+      include: { host: { select: { id: true, name: true, avatarUrl: true } } },
+    });
+
+    // Trigger thumbnail generation in background
+    generateThumbnailBackground(data.recordingUrl, session.id, hostId).catch((err) => {
+      console.error(`[Reel] Failed to trigger thumbnail for ${session.id}:`, err);
+    });
+
+    return session;
   }
 
   static async endSession(sessionId: string, hostId: string) {
