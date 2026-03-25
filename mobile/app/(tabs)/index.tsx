@@ -29,6 +29,24 @@ import { AppTheme, useAppTheme } from "../../src/theme";
 import { useAuth } from "../../src/contexts/AuthContext";
 import ProfileMenuBottomSheet from "../../src/components/ProfileMenuBottomSheet";
 import CreateMenuBottomSheet from "../../src/components/CreateMenuBottomSheet";
+import ImageWithFallback from "../../src/components/ImageWithFallback";
+
+function formatTime(dateStr: string | null) {
+  if (!dateStr) return "";
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diff = now.getTime() - date.getTime();
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 7) return `${days}d ago`;
+  return date.toLocaleDateString();
+}
+
 
 interface SessionListResponse {
   sessions: LiveSession[];
@@ -100,6 +118,73 @@ export default function HomeScreen() {
       fetchFollowingSessions();
     }, [fetchSessions, fetchFollowingSessions])
   );
+
+  const resetReelForm = useCallback(() => {
+    setReelTitle("");
+    setReelDescription("");
+    setReelVideo(null);
+    setShowReelForm(false);
+  }, []);
+
+  const handlePickReel = useCallback(async (source: "camera" | "gallery") => {
+    const permission = source === "camera" 
+      ? await ImagePicker.requestCameraPermissionsAsync() 
+      : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permission.granted) {
+      Alert.alert("Permission required", `Please allow access to your ${source === "camera" ? "camera" : "gallery"} to create a reel.`);
+      return;
+    }
+
+    const options: ImagePicker.ImagePickerOptions = {
+      mediaTypes: ["videos"],
+      allowsEditing: true,
+      quality: 0.8,
+      videoMaxDuration: 60,
+    };
+
+    const result = source === "camera"
+      ? await ImagePicker.launchCameraAsync(options)
+      : await ImagePicker.launchImageLibraryAsync(options);
+
+    if (!result.canceled && result.assets[0]) {
+      const asset = result.assets[0];
+      setReelVideo({
+        uri: asset.uri,
+        mimeType: asset.mimeType || "video/mp4",
+        fileSize: asset.fileSize || 0,
+      });
+      setShowReelForm(true);
+    }
+  }, []);
+
+  const handlePostReel = useCallback(async () => {
+    if (!reelTitle.trim() || !reelVideo) {
+      Alert.alert("Error", "Title and video are required");
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const { videoUrl } = await uploadReelVideo(reelVideo);
+      await apiClient("/sessions/reel", {
+        method: "POST",
+        body: {
+          title: reelTitle.trim(),
+          description: reelDescription.trim() || undefined,
+          recordingUrl: videoUrl,
+        },
+      });
+
+      Alert.alert("Success", "Your reel has been posted!");
+      resetReelForm();
+      handleRefresh();
+    } catch (err: any) {
+      Alert.alert("Upload Failed", err.message || "Something went wrong");
+    } finally {
+      setUploading(false);
+    }
+  }, [reelTitle, reelDescription, reelVideo, resetReelForm, handleRefresh]);
 
   async function handleRefresh() {
     setRefreshing(true);
@@ -178,75 +263,7 @@ export default function HomeScreen() {
     setActiveTab(page === 0 ? "live" : "following");
   }
 
-  function resetReelForm() {
-    setReelTitle("");
-    setReelDescription("");
-    setReelVideo(null);
-    setShowReelForm(false);
-  }
 
-  async function handlePickReel(source: "camera" | "gallery") {
-    const permission = source === "camera" 
-      ? await ImagePicker.requestCameraPermissionsAsync() 
-      : await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-    if (!permission.granted) {
-      Alert.alert("Permission required", `Please allow access to your ${source === "camera" ? "camera" : "gallery"} to create a reel.`);
-      return;
-    }
-
-    const options: ImagePicker.ImagePickerOptions = {
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
-      allowsEditing: true,
-      quality: 0.8,
-      videoMaxDuration: 60,
-    };
-
-    const result = source === "camera"
-      ? await ImagePicker.launchCameraAsync(options)
-      : await ImagePicker.launchImageLibraryAsync(options);
-
-    if (!result.canceled && result.assets[0]) {
-      const asset = result.assets[0];
-      setReelVideo({
-        uri: asset.uri,
-        mimeType: asset.mimeType || "video/mp4",
-        fileSize: asset.fileSize || 0,
-      });
-      setShowReelForm(true);
-    }
-  }
-
-  async function handlePostReel() {
-    if (!reelTitle.trim() || !reelVideo) {
-      Alert.alert("Error", "Title and video are required");
-      return;
-    }
-
-    setUploading(true);
-    try {
-      // 1. Upload video to R2
-      const { videoUrl } = await uploadReelVideo(reelVideo);
-
-      // 2. Create session in backend
-      await apiClient("/sessions/reel", {
-        method: "POST",
-        body: {
-          title: reelTitle.trim(),
-          description: reelDescription.trim() || undefined,
-          recordingUrl: videoUrl,
-        },
-      });
-
-      Alert.alert("Success", "Your reel has been posted!");
-      resetReelForm();
-      handleRefresh();
-    } catch (err: any) {
-      Alert.alert("Upload Failed", err.message || "Something went wrong");
-    } finally {
-      setUploading(false);
-    }
-  }
 
   async function handleGoLive() {
     if (!sessionTitle.trim()) {
@@ -279,8 +296,10 @@ export default function HomeScreen() {
         onPress={() => {
           if (isOwn) {
             router.push(`/host/${item.id}`);
-          } else {
-            router.push(`/stream-feed?tab=${activeTab}&startId=${item.id}`);
+          } else if (item.isLive) {
+            router.push(`/viewer/${item.id}`);
+          } else if (item.recordingUrl) {
+            router.push(`/reels?startId=${item.id}&source=following`);
           }
         }}
         activeOpacity={0.7}
@@ -345,7 +364,84 @@ export default function HomeScreen() {
     );
   }
 
+  function renderFollowingSession({ item }: { item: LiveSession }) {
+    const isLive = item.isLive;
+    const timeText = isLive ? "LIVE" : formatTime(item.startedAt);
+    
+    return (
+      <View style={styles.followingCard}>
+        <TouchableOpacity 
+          style={styles.followingHeader}
+          onPress={() => router.push(`/user/${item.hostId}`)}
+          activeOpacity={0.7}
+        >
+          <ImageWithFallback
+            uri={item.host?.avatarUrl}
+            style={styles.followingAvatar}
+            fallback={
+              <View style={styles.followingAvatarPlaceholder}>
+                <Text style={styles.followingAvatarText}>
+                  {(item.host?.name || "?").charAt(0).toUpperCase()}
+                </Text>
+              </View>
+            }
+          />
+          <View>
+            <Text style={styles.followingHostName}>{item.host?.name || "Unknown"}</Text>
+            <Text style={styles.followingSubtext}>{isLive ? "Live now" : timeText}</Text>
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.followingThumbnailContainer}
+          onPress={() => {
+            if (item.hostId === user?.id) {
+              router.push(`/host/${item.id}`);
+            } else if (item.isLive) {
+              router.push(`/viewer/${item.id}`);
+            } else if (item.recordingUrl) {
+              router.push(`/reels?startId=${item.id}&source=following`);
+            }
+          }}
+          activeOpacity={0.9}
+        >
+          {item.thumbnailUrl ? (
+            <Image 
+              source={{ uri: item.thumbnailUrl }} 
+              style={styles.followingThumbnail}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={styles.followingThumbnailPlaceholder}>
+              <Ionicons name="videocam" size={48} color={theme.textMuted} />
+            </View>
+          )}
+          {isLive ? (
+            <View style={styles.followingLiveBadge}>
+              <View style={styles.liveDot} />
+              <Text style={styles.liveText}>LIVE</Text>
+            </View>
+          ) : item.recordingUrl ? (
+            <View style={styles.followingPlayOverlay}>
+               <Ionicons name="play" size={48} color="rgba(255,255,255,0.8)" />
+            </View>
+          ) : null}
+        </TouchableOpacity>
+
+        <View style={styles.followingFooter}>
+          <Text style={styles.followingCaption}>
+            <Text style={styles.followingCaptionName}>{item.host?.name}</Text>{" "}
+            <Text style={styles.followingCaptionText}>{item.title}</Text>
+          </Text>
+          {!isLive && <Text style={styles.followingTimeFooter}>{timeText}</Text>}
+        </View>
+      </View>
+    );
+  }
+
+
   return (
+
     <View style={styles.container}>
       <Stack.Screen
         options={{
@@ -454,7 +550,8 @@ export default function HomeScreen() {
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         scrollEventThrottle={16}
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: true })}
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: Platform.OS !== "web" })}
+
         onMomentumScrollEnd={handlePageChange}
         style={{ flex: 1 }}
       >
@@ -463,6 +560,8 @@ export default function HomeScreen() {
             data={sessions}
             keyExtractor={(item) => item.id}
             renderItem={renderSession}
+
+
             contentContainerStyle={styles.list}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.accent} />}
             ListEmptyComponent={
@@ -478,8 +577,10 @@ export default function HomeScreen() {
           <FlatList
             data={followingSessions}
             keyExtractor={(item) => item.id}
-            renderItem={renderSession}
-            contentContainerStyle={styles.list}
+            renderItem={renderFollowingSession}
+
+            contentContainerStyle={styles.listFollowing}
+
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.accent} />}
             ListEmptyComponent={
               <View style={styles.empty}>
@@ -620,12 +721,115 @@ const createStyles = (theme: AppTheme) =>
   segmentText: { fontSize: 15, fontWeight: "600", color: theme.textMuted },
   segmentTextActive: { color: theme.text, fontWeight: "700" },
   list: { padding: 16, paddingBottom: 100 },
+  listFollowing: { paddingBottom: 100 },
   sessionCard: {
     backgroundColor: theme.surface,
     borderRadius: 16,
     marginBottom: 16,
     overflow: "hidden",
   },
+  // Redesigned Following Card Styles (Instagram Aesthetic)
+  followingCard: {
+    backgroundColor: "transparent",
+    marginBottom: 8,
+    overflow: "hidden",
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
+    paddingBottom: 20,
+  },
+
+  followingHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 12,
+  },
+  followingAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: theme.border,
+  },
+  followingAvatarPlaceholder: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: theme.accent,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  followingAvatarText: {
+    color: theme.textOnAccent,
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  followingHostName: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: theme.text,
+  },
+  followingSubtext: {
+    fontSize: 12,
+    color: theme.textMuted,
+    marginTop: 1,
+  },
+  followingThumbnailContainer: {
+    aspectRatio: 4 / 5, // Instagram-style aspect ratio
+    backgroundColor: theme.surfaceAlt,
+    position: "relative",
+    width: SCREEN_WIDTH,
+  },
+  followingThumbnail: {
+    width: "100%",
+    height: "100%",
+  },
+  followingThumbnailPlaceholder: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  followingLiveBadge: {
+    position: "absolute",
+    top: 14,
+    left: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#ef4444",
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 6,
+  },
+  followingPlayOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.1)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  followingFooter: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  followingCaption: {
+    fontSize: 14,
+    lineHeight: 18,
+  },
+  followingCaptionName: {
+    fontWeight: "700",
+    color: theme.text,
+  },
+  followingCaptionText: {
+    color: theme.text,
+  },
+  followingTimeFooter: {
+    fontSize: 11,
+    color: theme.textMuted,
+    marginTop: 6,
+    textTransform: "uppercase",
+  },
+
+
   sessionVideoPlaceholder: {
     height: 180,
     backgroundColor: theme.surfaceAlt,

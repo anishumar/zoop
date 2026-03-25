@@ -25,7 +25,8 @@ import { useAuth } from "../../src/contexts/AuthContext";
 import { apiClient } from "../../src/api/client";
 import { Product, User, ApiResponse, LiveSession } from "../../src/types";
 import { AppTheme, useAppTheme } from "../../src/theme";
-import { uploadProductImage } from "../../src/api/uploads";
+import { uploadProductImage, uploadReelVideo } from "../../src/api/uploads";
+
 import ImageWithFallback from "../../src/components/ImageWithFallback";
 import ProfileMenuBottomSheet from "../../src/components/ProfileMenuBottomSheet";
 import CreateMenuBottomSheet from "../../src/components/CreateMenuBottomSheet";
@@ -90,6 +91,20 @@ export default function ProfileScreen() {
   } | null>(null);
   const [prodSaving, setProdSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Reel creation state
+  const [showReelForm, setShowReelForm] = useState(false);
+  const [reelTitle, setReelTitle] = useState("");
+  const [reelDescription, setReelDescription] = useState("");
+  const [reelVideo, setReelVideo] = useState<{ uri: string; mimeType: string; fileSize: number } | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  // Go Live state
+  const [showGoLive, setShowGoLive] = useState(false);
+  const [sessionTitle, setSessionTitle] = useState("");
+  const [creating, setCreating] = useState(false);
+
+
 
   // ─── Data Fetching ──────────────────────────────────
 
@@ -233,7 +248,29 @@ export default function ProfileScreen() {
     }
   }
 
+  async function handleGoLive() {
+    if (!sessionTitle.trim()) {
+      Alert.alert("Error", "Please enter a session title");
+      return;
+    }
+    setCreating(true);
+    try {
+      const res = await apiClient<ApiResponse<LiveSession>>("/sessions", {
+        method: "POST",
+        body: { title: sessionTitle.trim() },
+      });
+      setShowGoLive(false);
+      setSessionTitle("");
+      router.push(`/host/${res.data.id}`);
+    } catch (err: any) {
+      Alert.alert("Error", err.message);
+    } finally {
+      setCreating(false);
+    }
+  }
+
   function toggleSize(size: string) {
+
     setProdSizes((c) => c.includes(size) ? c.filter((s) => s !== size) : [...c, size]);
   }
 
@@ -316,6 +353,75 @@ export default function ProfileScreen() {
     await handleDeleteProduct(id);
   }
 
+  const resetReelForm = useCallback(() => {
+    setReelTitle("");
+    setReelDescription("");
+    setReelVideo(null);
+    setShowReelForm(false);
+  }, []);
+
+  const handlePickReel = useCallback(async (source: "camera" | "gallery") => {
+    const permission = source === "camera" 
+      ? await ImagePicker.requestCameraPermissionsAsync() 
+      : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permission.granted) {
+      Alert.alert("Permission required", `Please allow access to your ${source === "camera" ? "camera" : "gallery"} to create a reel.`);
+      return;
+    }
+
+    const options: ImagePicker.ImagePickerOptions = {
+      mediaTypes: ["videos"],
+      allowsEditing: true,
+      quality: 0.8,
+      videoMaxDuration: 60,
+    };
+
+    const result = source === "camera"
+      ? await ImagePicker.launchCameraAsync(options)
+      : await ImagePicker.launchImageLibraryAsync(options);
+
+    if (!result.canceled && result.assets[0]) {
+      const asset = result.assets[0];
+      setReelVideo({
+        uri: asset.uri,
+        mimeType: asset.mimeType || "video/mp4",
+        fileSize: asset.fileSize || 0,
+      });
+      setShowReelForm(true);
+    }
+  }, []);
+
+  const handlePostReel = useCallback(async () => {
+    if (!reelTitle.trim() || !reelVideo) {
+      Alert.alert("Error", "Title and video are required");
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const { videoUrl } = await uploadReelVideo(reelVideo);
+      await apiClient("/sessions/reel", {
+        method: "POST",
+        body: {
+          title: reelTitle.trim(),
+          description: reelDescription.trim() || undefined,
+          recordingUrl: videoUrl,
+        },
+      });
+
+      Alert.alert("Success", "Your reel has been posted!");
+      resetReelForm();
+      handleRefresh();
+    } catch (err: any) {
+      Alert.alert("Upload Failed", err.message || "Something went wrong");
+    } finally {
+      setUploading(false);
+    }
+  }, [reelTitle, reelDescription, reelVideo, resetReelForm, handleRefresh]);
+
+
+
 
 
   // ─── Render Helpers ─────────────────────────────────
@@ -385,7 +491,14 @@ export default function ProfileScreen() {
     return (
       <TouchableOpacity
         style={[styles.streamCard, deletingStreamId === item.id && { opacity: 0.5 }]}
-        onPress={() => router.push(`/reels?startId=${item.id}&source=profile&hostId=${user?.id}`)}
+        onPress={() => {
+          if (item.isLive) {
+            router.push(`/viewer/${item.id}`);
+          } else {
+            router.push(`/reels?startId=${item.id}&source=profile&hostId=${user?.id}`);
+          }
+        }}
+
         onLongPress={() => setActionStream(item)}
         activeOpacity={0.7}
       >
@@ -398,14 +511,25 @@ export default function ProfileScreen() {
             </View>
           )}
           <View style={styles.playOverlay}>
-            <Ionicons name="play" size={24} color="#fff" />
+            <View style={styles.playIconCircle}>
+              <Ionicons name="play" size={18} color="#fff" style={{ marginLeft: 2 }} />
+            </View>
           </View>
+          {item.description && (
+            <View style={styles.reelBadge}>
+              <Ionicons name="film-outline" size={10} color="#fff" />
+              <Text style={styles.reelBadgeText}>REEL</Text>
+            </View>
+          )}
         </View>
         <View style={styles.streamInfo}>
           <Text style={styles.streamTitle} numberOfLines={1}>{item.title}</Text>
-          <Text style={styles.streamDate}>
-            {item.endedAt ? new Date(item.endedAt).toLocaleDateString() : "Recently Recorded"}
-          </Text>
+          <View style={styles.streamMetaRow}>
+            <Ionicons name="calendar-outline" size={12} color={theme.textMuted} />
+            <Text style={styles.streamDate}>
+              {item.endedAt ? new Date(item.endedAt).toLocaleDateString() : "Recently Recorded"}
+            </Text>
+          </View>
         </View>
       </TouchableOpacity>
     );
@@ -472,10 +596,18 @@ export default function ProfileScreen() {
         visible={showCreateMenu} 
         onClose={() => setShowCreateMenu(false)} 
         onAction={(action) => {
-          if (action === "go_live") Alert.alert("Go Live", "Coming soon! Use the Home tab.");
-          if (action === "create_reel") Alert.alert("Create Reel", "Coming soon!");
+          if (action === "go_live") setShowGoLive(true);
+          if (action === "create_reel") {
+            Alert.alert("Create Reel", "Choose video source", [
+              { text: "Camera", onPress: () => void handlePickReel("camera") },
+              { text: "Gallery", onPress: () => void handlePickReel("gallery") },
+              { text: "Cancel", style: "cancel" },
+            ]);
+          }
         }}
       />
+
+
 
       {/* Product Create/Edit Modal */}
       <Modal visible={showProductForm} transparent animationType="fade" onRequestClose={resetProductForm}>
@@ -531,15 +663,102 @@ export default function ProfileScreen() {
                     </TouchableOpacity>
                   </View>
                 )}
+              </ScrollView>
+
+              <View style={styles.formButtons}>
+                <TouchableOpacity style={styles.editCancelBtn} onPress={resetProductForm}>
+                  <Text style={styles.cancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.editSaveBtn, prodSaving && { opacity: 0.7 }]} onPress={handleSubmitProduct} disabled={prodSaving}>
+                  <Text style={styles.createText}>{prodSaving ? "Saving..." : (editingProduct ? "Update" : "Create Product")}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Go Live Modal */}
+      <Modal visible={showGoLive} transparent animationType="fade" onRequestClose={() => setShowGoLive(false)}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : Platform.OS === "android" ? "height" : undefined}
+        >
+          <View style={styles.modalOverlay}>
+            <TouchableOpacity 
+              style={StyleSheet.absoluteFill} 
+              activeOpacity={1} 
+              onPress={() => setShowGoLive(false)}
+            />
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Start Live Session</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="Session title..."
+                placeholderTextColor="#64748b"
+                value={sessionTitle}
+                onChangeText={setSessionTitle}
+                autoFocus={Platform.OS === "web"}
+              />
+              <View style={styles.modalButtons}>
+                <TouchableOpacity style={styles.modalCancel} onPress={() => setShowGoLive(false)}>
+                  <Text style={styles.modalCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalConfirm, creating && { opacity: 0.6 }]}
+                  onPress={handleGoLive}
+                  disabled={creating}
+                >
+                  <Text style={styles.modalConfirmText}>{creating ? "Starting..." : "Go Live"}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Reel Metadata Modal */}
+      <Modal visible={showReelForm} transparent animationType="slide" onRequestClose={resetReelForm}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+          <View style={styles.modalOverlay}>
+            <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={resetReelForm} />
+            <View style={[styles.formSheet, { maxHeight: "80%" }]}>
+              <ScrollView contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled">
+                <Text style={styles.formTitle}>New Reel</Text>
+                
+                <Text style={styles.label}>Title</Text>
+                <TextInput 
+                  style={styles.input} 
+                  placeholder="Enter a catchy title..." 
+                  placeholderTextColor="#64748b"
+                  value={reelTitle}
+                  onChangeText={setReelTitle}
+                />
+
+                <Text style={styles.label}>Description (Optional)</Text>
+                <TextInput 
+                  style={[styles.input, { minHeight: 100, textAlignVertical: "top" }]} 
+                  placeholder="What's this reel about?" 
+                  placeholderTextColor="#64748b"
+                  value={reelDescription}
+                  onChangeText={setReelDescription}
+                  multiline
+                />
 
                 <View style={styles.formButtons}>
-                  <TouchableOpacity style={styles.editCancelBtn} onPress={resetProductForm}>
+                  <TouchableOpacity style={styles.editCancelBtn} onPress={resetReelForm}>
                     <Text style={styles.cancelText}>Cancel</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={[styles.editSaveBtn, prodSaving && { opacity: 0.6 }]} onPress={handleSubmitProduct} disabled={prodSaving}>
-                    <Text style={styles.createText}>
-                      {prodSaving ? (editingProduct ? "Saving..." : "Adding...") : editingProduct ? "Save" : "Add Product"}
-                    </Text>
+                  <TouchableOpacity 
+                    style={[styles.editSaveBtn, uploading && { opacity: 0.6 }]} 
+                    onPress={handlePostReel}
+                    disabled={uploading}
+                  >
+                    {uploading ? (
+                      <ActivityIndicator color="#fff" size="small" />
+                    ) : (
+                      <Text style={styles.createText}>Post Reel</Text>
+                    )}
                   </TouchableOpacity>
                 </View>
               </ScrollView>
@@ -549,6 +768,7 @@ export default function ProfileScreen() {
       </Modal>
 
       {/* Stream Action Modal (Delete) */}
+
       <Modal visible={Boolean(actionStream)} transparent animationType="fade" onRequestClose={() => setActionStream(null)}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setActionStream(null)} />
@@ -676,7 +896,8 @@ export default function ProfileScreen() {
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         scrollEventThrottle={16}
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: true })}
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: Platform.OS !== "web" })}
+
         onMomentumScrollEnd={handlePageChange}
         style={{ flex: 1 }}
       >
@@ -760,7 +981,44 @@ const createStyles = (theme: AppTheme) =>
     segmentTextActive: { color: theme.text, fontWeight: "700" },
 
     // Modal overlay
+    // Go Live Modal Styles
+    modalContent: {
+      backgroundColor: theme.surface,
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      padding: 24,
+      paddingBottom: 40,
+    },
+    modalTitle: { fontSize: 22, fontWeight: "700", color: theme.text, marginBottom: 20 },
+    modalInput: {
+      backgroundColor: theme.background,
+      borderRadius: 12,
+      padding: 16,
+      fontSize: 16,
+      color: theme.text,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    modalButtons: { flexDirection: "row", marginTop: 20, gap: 12 },
+    modalCancel: {
+      flex: 1,
+      padding: 16,
+      borderRadius: 12,
+      backgroundColor: theme.surfaceAlt,
+      alignItems: "center",
+    },
+    modalCancelText: { color: theme.textMuted, fontWeight: "600", fontSize: 16 },
+    modalConfirm: {
+      flex: 1,
+      padding: 16,
+      borderRadius: 12,
+      backgroundColor: theme.accent,
+      alignItems: "center",
+    },
+    modalConfirmText: { color: theme.textOnAccent, fontWeight: "700", fontSize: 16 },
+
     modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" },
+
 
     // Menu Sheet
     menuSheet: {
@@ -907,13 +1165,14 @@ const createStyles = (theme: AppTheme) =>
     },
     streamThumbnail: {
       width: "100%",
-      aspectRatio: 16/9, // Better native aspect ratio for stream thumbs
+      aspectRatio: 1, // Change to 1 for consistency with products
       backgroundColor: theme.surfaceAlt,
       position: "relative",
     },
     streamThumbnailImage: {
       width: "100%",
       height: "100%",
+      resizeMode: "cover",
     },
     streamThumbnailPlaceholder: {
       width: "100%",
@@ -923,23 +1182,57 @@ const createStyles = (theme: AppTheme) =>
     },
     playOverlay: {
       ...StyleSheet.absoluteFillObject,
-      backgroundColor: "rgba(0,0,0,0.25)",
+      backgroundColor: "rgba(0,0,0,0.15)",
       justifyContent: "center",
       alignItems: "center",
       zIndex: 1,
     },
+    playIconCircle: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: "rgba(0,0,0,0.4)",
+      justifyContent: "center",
+      alignItems: "center",
+      borderWidth: 1.5,
+      borderColor: "rgba(255,255,255,0.8)",
+    },
+    reelBadge: {
+      position: "absolute",
+      bottom: 8,
+      right: 8,
+      backgroundColor: "rgba(0,0,0,0.6)",
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 6,
+      gap: 4,
+      zIndex: 2,
+    },
+    reelBadgeText: {
+      color: "#fff",
+      fontSize: 10,
+      fontWeight: "800",
+    },
     streamInfo: {
-      padding: 12, // Matched with gridCardInfo
+      padding: 12,
     },
     streamTitle: {
       fontSize: 14,
       fontWeight: "600",
       color: theme.text,
-      marginBottom: 4,
+      marginBottom: 6,
+    },
+    streamMetaRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
     },
     streamDate: {
       fontSize: 12,
       color: theme.textMuted,
       fontWeight: "500",
     },
+
   });

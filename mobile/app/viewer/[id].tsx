@@ -53,6 +53,9 @@ export default function ViewerScreen() {
   const [streamConnected, setStreamConnected] = useState(false);
   const [streamEnded, setStreamEnded] = useState(false);
   const [highlightedProduct, setHighlightedProduct] = useState<string | null>(null);
+  const [unreadProductCount, setUnreadProductCount] = useState(0);
+  const lastProductCountRef = useRef(0);
+
 
   const theme = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -150,6 +153,8 @@ export default function ViewerScreen() {
       setSession(res.data);
       setMessages((res.data.messages || []).slice(0, MAX_CHAT_MESSAGES));
       setViewerCount(res.data.viewerCount || 0);
+      lastProductCountRef.current = res.data.sessionProducts?.length || 0;
+
 
       const sessionIsVod = !res.data.isLive && !!res.data.recordingUrl;
       console.log(`[Viewer] Session loaded: isLive=${res.data.isLive}, recordingUrl=${res.data.recordingUrl}, isVod=${sessionIsVod}`);
@@ -202,6 +207,12 @@ export default function ViewerScreen() {
       const handleSessionProductsUpdated = (data: {
         sessionProducts: NonNullable<LiveSession["sessionProducts"]>;
       }) => {
+        const newCount = data.sessionProducts.length;
+        if (!showProducts && newCount > lastProductCountRef.current) {
+          setUnreadProductCount((prev) => prev + (newCount - lastProductCountRef.current));
+        }
+        lastProductCountRef.current = newCount;
+
         setSession((prev) =>
           prev
             ? {
@@ -211,6 +222,7 @@ export default function ViewerScreen() {
             : prev
         );
       };
+
 
       const handleConnect = () => {
         socket.emit("join_live", id);
@@ -335,27 +347,52 @@ export default function ViewerScreen() {
                   styles.productsHeaderButton,
                   showProducts && styles.productsHeaderButtonActive,
                 ]}
-                onPress={() => setShowProducts((v) => !v)}
+                onPress={() => {
+                  if (!showProducts) setUnreadProductCount(0);
+                  setShowProducts((v) => !v);
+                }}
               >
                 <Ionicons
                   name="cube-outline"
                   size={18}
                   color={showProducts ? theme.textOnAccent : "#fff"}
                 />
+                {unreadProductCount > 0 && (
+                  <View style={styles.productBadge}>
+                    <Text style={styles.productBadgeText}>
+                      {unreadProductCount > 9 ? "9+" : unreadProductCount}
+                    </Text>
+                  </View>
+                )}
               </TouchableOpacity>
+
             )}
           </View>
         </View>
 
         {/* Session Meta - overlaid below top bar */}
         <View style={styles.sessionMeta}>
-          <Text style={[styles.sessionTitle, styles.textShadow]}>
-            {session?.title || "Live Session"}
-          </Text>
-          <Text style={[styles.hostName, styles.textShadow]}>
-            Hosted by {session?.host?.name || "..."}
-          </Text>
+          <ImageWithFallback
+            uri={session?.host?.avatarUrl}
+            style={styles.hostAvatar}
+            fallback={
+              <View style={styles.hostAvatarPlaceholder}>
+                <Text style={styles.avatarLetter}>
+                  {(session?.host?.name || "?").charAt(0).toUpperCase()}
+                </Text>
+              </View>
+            }
+          />
+          <View style={styles.sessionMetaText}>
+            <Text style={[styles.sessionTitle, styles.textShadow]} numberOfLines={1}>
+              {session?.title || "Live Session"}
+            </Text>
+            <Text style={[styles.hostName, styles.textShadow]}>
+              {session?.host?.name || "..."}
+            </Text>
+          </View>
         </View>
+
 
         {/* Main content area: chat on the left, reactions on the right */}
         <View style={styles.mainContentArea} pointerEvents="box-none">
@@ -600,11 +637,64 @@ const createStyles = (theme: AppTheme) =>
     backgroundColor: theme.accent,
     borderColor: theme.accent,
   },
+  productBadge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    backgroundColor: "#ef4444",
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: "#000",
+  },
+  productBadgeText: {
+    color: "#fff",
+    fontSize: 9,
+    fontWeight: "800",
+  },
+
 
   // Session meta
-  sessionMeta: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8 },
-  sessionTitle: { fontSize: 18, fontWeight: "700" },
-  hostName: { fontSize: 14, marginTop: 2, color: "rgba(255,255,255,0.7)" },
+  sessionMeta: {
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  hostAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: "#fff",
+  },
+  hostAvatarPlaceholder: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1.5,
+    borderColor: "#fff",
+  },
+  avatarLetter: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  sessionMetaText: {
+    flex: 1,
+  },
+  sessionTitle: { fontSize: 18, fontWeight: "700", color: "#fff" },
+  hostName: { fontSize: 14, marginTop: 2, color: "rgba(255,255,255,0.85)" },
+
 
   // Stream ended overlay
   endedOverlay: {

@@ -1,7 +1,23 @@
-import { registerGlobals } from "@livekit/react-native";
+import { useEffect } from "react";
+import { Slot, useRouter, useSegments, Stack } from "expo-router";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
+import { AuthProvider, useAuth } from "../src/contexts/AuthContext";
+import { ActivityIndicator, View, Platform } from "react-native";
+import { useAppTheme } from "../src/theme";
+import { PlayerProvider } from "../src/contexts/PlayerContext";
+import MiniPlayer from "../src/components/MiniPlayer";
+import GlobalPlayer from "../src/components/GlobalPlayer";
 
-// Register LiveKit globals as early as possible
-registerGlobals();
+// Register LiveKit globals as early as possible (Native only)
+if (Platform.OS !== "web") {
+  try {
+    const { registerGlobals } = require("@livekit/react-native");
+    registerGlobals();
+  } catch (e) {
+    console.warn("Failed to register LiveKit globals:", e);
+  }
+}
 
 // Polyfill Event for livekit-client in environments where it might be missing
 if (typeof global.Event === "undefined") {
@@ -13,17 +29,6 @@ if (typeof global.Event === "undefined") {
     type: string;
   };
 }
-
-import { useEffect } from "react";
-import { Slot, useRouter, useSegments, Stack } from "expo-router";
-import { SafeAreaProvider } from "react-native-safe-area-context";
-import { StatusBar } from "expo-status-bar";
-import { AuthProvider, useAuth } from "../src/contexts/AuthContext";
-import { ActivityIndicator, View } from "react-native";
-import { useAppTheme } from "../src/theme";
-import { PlayerProvider } from "../src/contexts/PlayerContext";
-import MiniPlayer from "../src/components/MiniPlayer";
-import GlobalPlayer from "../src/components/GlobalPlayer";
 
 function RootNavigator() {
   const { user, loading } = useAuth();

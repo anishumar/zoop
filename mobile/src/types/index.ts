@@ -27,7 +27,9 @@ export interface Product {
 export interface LiveSession {
   id: string;
   title: string;
+  description?: string | null;
   isLive: boolean;
+
   startedAt: string | null;
   endedAt: string | null;
   streamUrl: string | null;
@@ -39,18 +41,20 @@ export interface LiveSession {
   peakViewers: number;
   thumbnailUrl: string | null;
   hostId: string;
-  host: { id: string; name: string };
+  host: { id: string; name: string; avatarUrl?: string | null };
   sessionProducts?: { product: Product }[];
   messages?: Message[];
 }
 
 export interface Message {
   id: string;
-  type: "reaction" | "question" | "host_reply";
+  type: "reaction" | "question" | "host_reply" | "comment";
   content: string;
+
   createdAt: string;
   sessionId: string;
-  user: { id: string; name: string };
+  user: { id: string; name: string; avatarUrl?: string | null };
+
 }
 
 export interface ApiResponse<T> {

@@ -69,6 +69,7 @@ export default function LiveKitRoomWrapper({
   return (
     <View style={containerStyle}>
       <LKRoom
+        key={`${url}-${token}`} // Ensure a clean re-mount if the session changes
         serverUrl={url}
         token={token}
         connect={true}
@@ -84,9 +85,19 @@ export default function LiveKitRoomWrapper({
               }
             : undefined,
         }}
-        onError={(err) => setError(err?.message || "Connection failed")}
-        onConnected={() => onConnectionChange?.(true)}
-        onDisconnected={() => onConnectionChange?.(false)}
+
+        onError={(err) => {
+          console.warn("[LiveKitRoom] Connection error:", err.message);
+          setError(err?.message || "Connection failed");
+        }}
+        onConnected={() => {
+          console.log("[LiveKitRoom] Connected to room");
+          onConnectionChange?.(true);
+        }}
+        onDisconnected={() => {
+          console.log("[LiveKitRoom] Disconnected from room");
+          onConnectionChange?.(false);
+        }}
       >
         <HostMediaController
           isHost={isHost}
@@ -101,6 +112,7 @@ export default function LiveKitRoomWrapper({
         />
       </LKRoom>
     </View>
+
   );
 }
 
@@ -123,12 +135,17 @@ function HostMediaController({
 
   useEffect(() => {
     if (!isHost) return;
+    let isMounted = true;
 
     syncChainRef.current = syncChainRef.current
       .catch(() => undefined)
       .then(async () => {
+        if (!isMounted || !room || room.state === "disconnected") return;
+
         try {
-          await room.localParticipant.setMicrophoneEnabled(isMicrophoneEnabled);
+          if (room.localParticipant) {
+             await room.localParticipant.setMicrophoneEnabled(isMicrophoneEnabled);
+          }
 
           const cameraPublication = room.localParticipant.getTrackPublication(
             Track.Source.Camera
@@ -167,7 +184,11 @@ function HostMediaController({
           );
         }
       });
+    return () => {
+      isMounted = false;
+    };
   }, [cameraFacingMode, isCameraEnabled, isHost, isMicrophoneEnabled, onControlError, room]);
+
 
   return null;
 }

@@ -26,7 +26,9 @@ import ImageWithFallback from "../../src/components/ImageWithFallback";
 import { LiveSession, Product, Message, ApiResponse } from "../../src/types";
 import { AppTheme, useAppTheme } from "../../src/theme";
 import { usePlayer } from "../../src/contexts/PlayerContext";
+import { useAuth } from "../../src/contexts/AuthContext";
 import { useLiveTimer } from "../../src/hooks/useLiveTimer";
+
 
 interface ProductListResponse {
   products: Product[];
@@ -84,7 +86,9 @@ export default function HostScreen() {
   const styles = useMemo(() => createStyles(theme), [theme]);
   const insets = useSafeAreaInsets();
   const { openPlayer } = usePlayer();
+  const { user: authUser } = useAuth();
   const isMinimizing = useRef(false);
+
 
   function handleBack() {
     if (session) {
@@ -369,15 +373,41 @@ export default function HostScreen() {
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <View style={[styles.topBar, { paddingTop: Math.max(insets.top, 16) }]}>
-          <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={18} color={isImmersiveMode ? "#fff" : theme.textMuted} />
-            <Text style={[styles.backText, isImmersiveMode && styles.textShadow]}>Back</Text>
-          </TouchableOpacity>
-          <View style={styles.topBarRight}>
-            <View style={styles.liveBadge}>
-              <View style={styles.liveDot} />
-              <Text style={styles.liveLabel}>{streamDuration}</Text>
+          <View style={styles.topBarLeft}>
+            <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+              <Ionicons name="arrow-back" size={20} color={isImmersiveMode ? "#fff" : theme.textMuted} />
+            </TouchableOpacity>
+            
+            <View style={styles.hostInfo}>
+              <ImageWithFallback
+                uri={authUser?.avatarUrl}
+                style={styles.hostAvatar}
+                fallback={
+                  <View style={styles.hostAvatarPlaceholder}>
+                    <Text style={styles.avatarLetter}>
+                      {(authUser?.name || "?").charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                }
+              />
+              <View>
+                <Text style={[styles.hostName, isImmersiveMode && styles.textShadow]}>
+                  {authUser?.name}
+                </Text>
+                <Text style={[styles.liveTimer, isImmersiveMode && styles.textShadow]}>
+                  {streamDuration}
+                </Text>
+              </View>
             </View>
+          </View>
+
+          <View style={styles.topBarRight}>
+            {!isImmersiveMode && (
+              <View style={styles.liveBadge}>
+                <View style={styles.liveDot} />
+              </View>
+            )}
+
             <TouchableOpacity
               style={[styles.headerIconButton, isImmersiveMode && styles.immersiveHeaderButton, { borderRadius: 19, width: 38, height: 38, alignItems: 'center', justifyContent: 'center' }]}
               onPress={() => setIsImmersiveMode((v) => !v)}
@@ -743,6 +773,49 @@ const createStyles = (theme: AppTheme) =>
     paddingHorizontal: 16,
     paddingBottom: 16,
   },
+  topBarLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  hostInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  hostAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: "#fff",
+  },
+  hostAvatarPlaceholder: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1.5,
+    borderColor: "#fff",
+  },
+  avatarLetter: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "bold",
+  },
+  hostName: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  liveTimer: {
+    color: "rgba(255,255,255,0.8)",
+    fontSize: 12,
+    fontWeight: "600",
+    fontVariant: ["tabular-nums"],
+  },
   topBarRight: {
     flexDirection: "row",
     alignItems: "center",
@@ -776,15 +849,15 @@ const createStyles = (theme: AppTheme) =>
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 2,
-    minWidth: 45,
+    minWidth: 10,
   },
   liveDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
     backgroundColor: "#ef4444",
-    marginRight: 6,
   },
+
   liveLabel: {
     color: "#fff",
     fontWeight: "700",

@@ -192,13 +192,15 @@ export class SessionService {
     const session = await prisma.liveSession.findUnique({
       where: { id },
       include: {
-        host: { select: { id: true, name: true, email: true } },
+        host: { select: { id: true, name: true, email: true, avatarUrl: true } },
+
         sessionProducts: { include: { product: true } },
         messages: {
           orderBy: { createdAt: "desc" },
-          take: 50,
+          take: 100,
           include: { user: { select: { id: true, name: true } } },
         },
+
       },
     });
     if (!session) throw new ApiError(404, "Session not found");
