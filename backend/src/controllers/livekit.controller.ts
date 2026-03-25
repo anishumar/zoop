@@ -4,6 +4,7 @@ import { catchAsync } from "../utils/catchAsync";
 import { sendSuccess } from "../utils/ApiResponse";
 import { ApiError } from "../utils/ApiError";
 import { StorageService } from "../services/storage.service";
+import { generateThumbnailBackground } from "../utils/ffmpeg";
 import prisma from "../prisma/client";
 
 /**
@@ -114,6 +115,19 @@ export const handleWebhook = catchAsync(async (req: Request, res: Response) => {
               data: { recordingUrl: publicUrl },
             });
             console.log(`[Webhook] Updated ${result.count} sessions with recording URL.`);
+
+            // Kick off background thumbnail generation
+            // We do this if we can resolve the exact sessionId and the session exists to know the hostId
+            if (targetSessionId) {
+              prisma.liveSession.findUnique({ where: { id: targetSessionId }, select: { hostId: true } })
+                .then(session => {
+                  if (session) {
+                    // Do not `await` this to avoid blocking the webhook response
+                    generateThumbnailBackground(publicUrl, targetSessionId!, session.hostId);
+                  }
+                })
+                .catch(err => console.error("[Webhook] Failed to lookup session for thumbnail:", err));
+            }
           }
         }
       }

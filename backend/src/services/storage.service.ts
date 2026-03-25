@@ -162,6 +162,23 @@ export class StorageService {
     };
   }
 
+  /**
+   * Uploads a raw buffer directly to R2. Useful for server-side generated files like thumbnails.
+   */
+  static async uploadBuffer(key: string, buffer: Buffer, mimeType: string): Promise<string> {
+    ensureStorageConfig();
+
+    const command = new PutObjectCommand({
+      Bucket: bucket!,
+      Key: key,
+      Body: buffer,
+      ContentType: mimeType,
+    });
+
+    await this.getClient().send(command);
+    return this.buildPublicUrl(key);
+  }
+
   /* ── Convenience wrappers (backward-compatible) ─────────── */
 
   static async createProductImagePresign(input: Omit<PresignInput, "entity">): Promise<PresignOutput> {
