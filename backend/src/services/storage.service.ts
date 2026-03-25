@@ -3,13 +3,96 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { randomUUID } from "crypto";
 import { ApiError } from "../utils/ApiError";
 
-const ALLOWED_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
-const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+/* ── MIME & size rules per entity ───────────────────────────── */
+
+const IMAGE_MIMES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const VIDEO_MIMES = new Set(["video/mp4", "video/webm", "video/quicktime"]);
+const ALL_MEDIA_MIMES = new Set([...IMAGE_MIMES, ...VIDEO_MIMES]);
+
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;        // 5 MB
+const MAX_VIDEO_BYTES = 100 * 1024 * 1024;       // 100 MB
+
+/* ── Env ────────────────────────────────────────────────────── */
+
+const bucket = process.env.R2_BUCKET;
+const accountId = process.env.R2_ACCOUNT_ID;
+const accessKeyId = process.env.R2_ACCESS_KEY;
+const secretAccessKey = process.env.R2_SECRET_KEY;
+const publicUrl = process.env.R2_PUBLIC_URL;
+
+function ensureStorageConfig() {
+  if (!bucket || !accountId || !accessKeyId || !secretAccessKey) {
+    throw new ApiError(
+      500,
+      "Storage is not configured. Set R2_BUCKET, R2_ACCOUNT_ID, R2_ACCESS_KEY, and R2_SECRET_KEY",
+    );
+  }
+}
+
+/* ── Helpers ────────────────────────────────────────────────── */
+
+function extensionForMime(mimeType: string) {
+  const map: Record<string, string> = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "video/mp4": "mp4",
+    "video/webm": "webm",
+    "video/quicktime": "mov",
+  };
+  return map[mimeType] || "bin";
+}
+
+function buildPublicUrl(key: string) {
+  if (publicUrl) return `${publicUrl.replace(/\/$/, "")}/${key}`;
+  return `https://${accountId}.r2.cloudflarestorage.com/${bucket}/${key}`;
+}
+
+/* ── Entity definitions ─────────────────────────────────────── */
+
+type EntityType = "product" | "avatar" | "stream" | "reel" | "thumbnail";
+
+interface EntityConfig {
+  allowedMimes: Set<string>;
+  maxBytes: number;
+  keyPrefix: string;
+}
+
+const ENTITY_CONFIG: Record<EntityType, EntityConfig> = {
+  product: {
+    allowedMimes: IMAGE_MIMES,
+    maxBytes: MAX_IMAGE_BYTES,
+    keyPrefix: "products",
+  },
+  avatar: {
+    allowedMimes: IMAGE_MIMES,
+    maxBytes: MAX_IMAGE_BYTES,
+    keyPrefix: "avatars",
+  },
+  thumbnail: {
+    allowedMimes: IMAGE_MIMES,
+    maxBytes: MAX_IMAGE_BYTES,
+    keyPrefix: "thumbnails",
+  },
+  stream: {
+    allowedMimes: VIDEO_MIMES,
+    maxBytes: MAX_VIDEO_BYTES,
+    keyPrefix: "streams",
+  },
+  reel: {
+    allowedMimes: ALL_MEDIA_MIMES,
+    maxBytes: MAX_VIDEO_BYTES,
+    keyPrefix: "reels",
+  },
+};
+
+/* ── Service ────────────────────────────────────────────────── */
 
 interface PresignInput {
   userId: string;
   mimeType: string;
   size: number;
+  entity: EntityType;
 }
 
 interface PresignOutput {
@@ -19,39 +102,6 @@ interface PresignOutput {
   headers: Record<string, string>;
 }
 
-const bucket = process.env.S3_BUCKET;
-const region = process.env.S3_REGION || "us-east-1";
-const endpoint = process.env.S3_ENDPOINT;
-const accessKeyId = process.env.S3_ACCESS_KEY;
-const secretAccessKey = process.env.S3_SECRET_KEY;
-
-function ensureStorageConfig() {
-  if (!bucket || !accessKeyId || !secretAccessKey) {
-    throw new ApiError(
-      500,
-      "Storage is not configured. Set S3_BUCKET, S3_ACCESS_KEY, and S3_SECRET_KEY"
-    );
-  }
-}
-
-function extensionForMime(mimeType: string) {
-  if (mimeType === "image/jpeg") return "jpg";
-  if (mimeType === "image/png") return "png";
-  if (mimeType === "image/webp") return "webp";
-  return "bin";
-}
-
-function buildPublicUrl(key: string) {
-  const base = process.env.PUBLIC_ASSET_BASE_URL;
-  if (base) return `${base.replace(/\/$/, "")}/${key}`;
-
-  if (endpoint) {
-    return `${endpoint.replace(/\/$/, "")}/${bucket}/${key}`;
-  }
-
-  return `https://${bucket}.s3.${region}.amazonaws.com/${key}`;
-}
-
 export class StorageService {
   private static client: S3Client | null = null;
 
@@ -59,32 +109,40 @@ export class StorageService {
     if (!this.client) {
       ensureStorageConfig();
       this.client = new S3Client({
-        region,
-        endpoint,
-        forcePathStyle: Boolean(endpoint),
+        region: "auto",
+        endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
         credentials: {
           accessKeyId: accessKeyId!,
           secretAccessKey: secretAccessKey!,
         },
       });
     }
-
     return this.client;
   }
 
-  static async createProductImagePresign(input: PresignInput): Promise<PresignOutput> {
+  /**
+   * Generic presign method for any supported entity type.
+   */
+  static async createPresign(input: PresignInput): Promise<PresignOutput> {
     ensureStorageConfig();
 
-    if (!ALLOWED_MIME_TYPES.has(input.mimeType)) {
-      throw new ApiError(400, "Only JPEG, PNG, and WEBP images are allowed");
+    const config = ENTITY_CONFIG[input.entity];
+    if (!config) {
+      throw new ApiError(400, `Unsupported entity type: ${input.entity}`);
     }
 
-    if (!Number.isFinite(input.size) || input.size <= 0 || input.size > MAX_UPLOAD_BYTES) {
-      throw new ApiError(400, `Image size must be between 1 byte and ${MAX_UPLOAD_BYTES} bytes`);
+    if (!config.allowedMimes.has(input.mimeType)) {
+      const allowed = [...config.allowedMimes].join(", ");
+      throw new ApiError(400, `Unsupported MIME type for ${input.entity}. Allowed: ${allowed}`);
+    }
+
+    if (!Number.isFinite(input.size) || input.size <= 0 || input.size > config.maxBytes) {
+      const maxMB = (config.maxBytes / (1024 * 1024)).toFixed(0);
+      throw new ApiError(400, `File size must be between 1 byte and ${maxMB} MB`);
     }
 
     const ext = extensionForMime(input.mimeType);
-    const key = `products/${input.userId}/${randomUUID()}.${ext}`;
+    const key = `${config.keyPrefix}/${input.userId}/${randomUUID()}.${ext}`;
 
     const command = new PutObjectCommand({
       Bucket: bucket!,
@@ -92,7 +150,9 @@ export class StorageService {
       ContentType: input.mimeType,
     });
 
-    const uploadUrl = await getSignedUrl(this.getClient(), command, { expiresIn: 60 * 5 });
+    const uploadUrl = await getSignedUrl(this.getClient(), command, {
+      expiresIn: 60 * 10, // 10 minutes
+    });
 
     return {
       uploadUrl,
@@ -102,33 +162,13 @@ export class StorageService {
     };
   }
 
-  static async createAvatarPresign(input: PresignInput): Promise<PresignOutput> {
-    ensureStorageConfig();
+  /* ── Convenience wrappers (backward-compatible) ─────────── */
 
-    if (!ALLOWED_MIME_TYPES.has(input.mimeType)) {
-      throw new ApiError(400, "Only JPEG, PNG, and WEBP images are allowed");
-    }
+  static async createProductImagePresign(input: Omit<PresignInput, "entity">): Promise<PresignOutput> {
+    return this.createPresign({ ...input, entity: "product" });
+  }
 
-    if (!Number.isFinite(input.size) || input.size <= 0 || input.size > MAX_UPLOAD_BYTES) {
-      throw new ApiError(400, `Image size must be between 1 byte and ${MAX_UPLOAD_BYTES} bytes`);
-    }
-
-    const ext = extensionForMime(input.mimeType);
-    const key = `avatars/${input.userId}/${randomUUID()}.${ext}`;
-
-    const command = new PutObjectCommand({
-      Bucket: bucket!,
-      Key: key,
-      ContentType: input.mimeType,
-    });
-
-    const uploadUrl = await getSignedUrl(this.getClient(), command, { expiresIn: 60 * 5 });
-
-    return {
-      uploadUrl,
-      key,
-      publicUrl: buildPublicUrl(key),
-      headers: { "Content-Type": input.mimeType },
-    };
+  static async createAvatarPresign(input: Omit<PresignInput, "entity">): Promise<PresignOutput> {
+    return this.createPresign({ ...input, entity: "avatar" });
   }
 }

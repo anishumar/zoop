@@ -10,19 +10,21 @@ import {
   Keyboard,
   Platform,
   Dimensions,
+  Modal,
+  ScrollView,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Socket } from "socket.io-client";
 import { Ionicons } from "@expo/vector-icons";
 import { apiClient } from "../../src/api/client";
 import { connectSocket, disconnectSocket } from "../../src/api/socket";
 import { getLiveKitToken } from "../../src/api/livekit";
-// Removed VideoPlayer import to use GlobalPlayer singleton
 import { LiveSession, Message, ApiResponse } from "../../src/types";
 import { AppTheme, useAppTheme } from "../../src/theme";
 import { usePlayer } from "../../src/contexts/PlayerContext";
 import ImageWithFallback from "../../src/components/ImageWithFallback";
+import VideoPlayer from "../../src/components/VideoPlayer";
 
 const { width } = Dimensions.get("window");
 const REACTIONS = ["❤️", "🔥", "👏", "😍", "🎉", "💰"];
@@ -52,6 +54,7 @@ export default function ViewerScreen() {
 
   const theme = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
+  const insets = useSafeAreaInsets();
   const {
     openPlayer,
     activeSession: playerActiveSession,
@@ -66,7 +69,6 @@ export default function ViewerScreen() {
 
   function handleBack() {
     console.log("handleBack called, session:", session?.id, "streamEnded:", streamEnded);
-    // If we have a session and it hasn't ended, we minimize
     if (session && !streamEnded) {
       console.log("Minimizing player...");
       isMinimizing.current = true;
@@ -100,7 +102,7 @@ export default function ViewerScreen() {
         disconnectSocket();
       }
     };
-  }, [id]); // Only run on ID change
+  }, [id]);
 
   useEffect(() => {
     if (!session || isMinimizing.current || streamEnded) return;
@@ -257,17 +259,45 @@ export default function ViewerScreen() {
   }
 
   const products = session?.sessionProducts?.map((sp) => sp.product) || [];
+  const streamType = (session?.streamType as "mock" | "livekit") || "livekit";
+
+  const handleConnectionChange = (connected: boolean) => {
+    setStreamConnected(connected);
+  };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
+      {/* Fullscreen video background */}
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+        <VideoPlayer
+          streamType={streamType}
+          streamUrl={session?.streamUrl}
+          livekitToken={effectiveToken}
+          livekitUrl={effectiveUrl}
+          isHost={false}
+          onConnectionChange={handleConnectionChange}
+          isFullscreen={true}
+        />
+      </View>
+
+      {streamEnded && (
+        <View style={[StyleSheet.absoluteFill, styles.endedOverlay]}>
+          <Text style={styles.endedText}>Stream has ended</Text>
+          <TouchableOpacity style={styles.goBackButton} onPress={handleBack}>
+            <Text style={styles.goBackText}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       <KeyboardAvoidingView
-        style={{ flex: 1 }}
+        style={styles.keyboardView}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
-        <View style={styles.topBar}>
+        {/* Top Bar */}
+        <View style={[styles.topBar, { paddingTop: Math.max(insets.top, 16) }]}>
           <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={18} color={theme.textMuted} />
-            <Text style={styles.backText}>Back</Text>
+            <Ionicons name="arrow-back" size={18} color="#fff" />
+            <Text style={[styles.backText, styles.textShadow]}>Back</Text>
           </TouchableOpacity>
           <View style={styles.topBarRight}>
             {streamConnected && (
@@ -277,169 +307,219 @@ export default function ViewerScreen() {
               </View>
             )}
             <View style={styles.viewerBadge}>
-              <Ionicons name="eye-outline" size={14} color={theme.text} style={styles.viewerIcon} />
+              <Ionicons name="eye-outline" size={14} color="#fff" style={styles.viewerIcon} />
               <Text style={styles.viewerCountText}>{viewerCount}</Text>
             </View>
-          </View>
-        </View>
-
-        <View style={styles.videoContainer}>
-          {streamEnded && (
-            <View style={styles.endedOverlay}>
-              <Text style={styles.endedText}>Stream has ended</Text>
-              <TouchableOpacity style={styles.goBackButton} onPress={handleBack}>
-                <Text style={styles.goBackText}>Go Back</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {!streamEnded && (
-            <View style={styles.placeholderBox} />
-          )}
-
-          <View style={styles.floatingReactions}>
-            {floatingReactions.map((r) => (
-              <Text key={r.id} style={styles.floatingEmoji}>{r.emoji}</Text>
-            ))}
-          </View>
-        </View>
-
-        <View style={styles.sessionMeta}>
-          <Text style={styles.sessionTitle}>{session?.title || "Live Session"}</Text>
-          <Text style={styles.hostName}>Hosted by {session?.host?.name || "..."}</Text>
-        </View>
-
-        {products.length > 0 && (
-          <TouchableOpacity style={styles.productsToggle} onPress={() => setShowProducts(!showProducts)}>
-            <View style={styles.productsToggleContent}>
-              <Text style={styles.productsToggleText}>
-                {showProducts ? "Hide Products" : `Products (${products.length})`}
-              </Text>
-              <Ionicons
-                name={showProducts ? "chevron-up" : "chevron-down"}
-                size={16}
-                color={theme.accent}
-              />
-            </View>
-          </TouchableOpacity>
-        )}
-
-        {showProducts && (
-          <FlatList
-            data={products}
-            horizontal
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.productsList}
-            showsHorizontalScrollIndicator={false}
-            renderItem={({ item }) => (
-              <View
+            {products.length > 0 && (
+              <TouchableOpacity
                 style={[
-                  styles.productCard,
-                  highlightedProduct === item.id && styles.productHighlighted,
+                  styles.productsHeaderButton,
+                  showProducts && styles.productsHeaderButtonActive,
                 ]}
+                onPress={() => setShowProducts((v) => !v)}
               >
-                <TouchableOpacity 
-                  style={styles.wishlistBtn}
-                  onPress={() => toggleWishlist(item.id)}
-                >
-                  <Ionicons 
-                    name={wishlist.has(item.id) ? "heart" : "heart-outline"} 
-                    size={20} 
-                    color={wishlist.has(item.id) ? "#ef4444" : theme.text} 
-                  />
-                </TouchableOpacity>
-                <ImageWithFallback
-                  uri={item.imageUrl}
-                  style={styles.productImage}
-                  fallback={
-                    <Ionicons
-                      name="cube-outline"
-                      size={24}
-                      color={theme.textMuted}
-                      style={styles.productEmoji}
-                    />
-                  }
-                />
-                <Text style={styles.productTitle} numberOfLines={1}>{item.title}</Text>
-                <Text style={styles.productPrice}>₹{item.price.toFixed(2)}</Text>
-                <Text style={styles.productMeta}>Qty: {item.quantity}</Text>
-                <Text style={styles.productMeta} numberOfLines={2}>
-                  Sizes: {item.sizes?.join(", ") || "Not set"}
-                </Text>
-              </View>
-            )}
-          />
-        )}
-
-        <View style={styles.chatSection}>
-          <FlatList
-            data={messages.slice(0, 50)}
-            keyExtractor={(item) => item.id}
-            inverted
-            style={styles.chatList}
-            renderItem={({ item }) => (
-              <View style={styles.chatMessage}>
                 <Ionicons
-                  name={
-                    item.type === "reaction"
-                      ? "heart"
-                      : item.type === "host_reply"
-                      ? "chatbubble-ellipses-outline"
-                      : "help-circle-outline"
-                  }
-                  size={16}
-                  color={
-                    item.type === "reaction"
-                      ? theme.danger
-                      : item.type === "host_reply"
-                      ? theme.textMuted
-                      : theme.accent
-                  }
-                  style={styles.chatBadge}
+                  name="cube-outline"
+                  size={18}
+                  color={showProducts ? theme.textOnAccent : "#fff"}
                 />
-                <Text style={styles.chatSender}>{item.user.name}: </Text>
-                <Text style={styles.chatText}>{item.content}</Text>
-              </View>
+              </TouchableOpacity>
             )}
-          />
+          </View>
         </View>
 
-        <View style={styles.reactionBar}>
-          {REACTIONS.map((emoji) => (
-            <TouchableOpacity key={emoji} style={styles.reactionButton} onPress={() => sendReaction(emoji)}>
-              <Text style={styles.reactionEmoji}>{emoji}</Text>
+        {/* Session Meta - overlaid below top bar */}
+        <View style={styles.sessionMeta}>
+          <Text style={[styles.sessionTitle, styles.textShadow]}>
+            {session?.title || "Live Session"}
+          </Text>
+          <Text style={[styles.hostName, styles.textShadow]}>
+            Hosted by {session?.host?.name || "..."}
+          </Text>
+        </View>
+
+        {/* Main content area: chat on the left, reactions on the right */}
+        <View style={styles.mainContentArea} pointerEvents="box-none">
+          {/* Chat overlay - bottom left */}
+          <View style={styles.chatAreaWrapper} pointerEvents="box-none">
+            <FlatList
+              style={styles.chatList}
+              contentContainerStyle={styles.chatListContent}
+              inverted
+              showsVerticalScrollIndicator={false}
+              data={messages.slice(0, 50)}
+              keyExtractor={(item) => item.id}
+              ListEmptyComponent={
+                <Text style={[styles.noMessages, styles.textShadow]}>
+                   No messages yet
+                </Text>
+              }
+              renderItem={({ item }) => (
+                <View style={styles.chatMessage}>
+                  <Ionicons
+                    name={
+                      item.type === "reaction"
+                        ? "heart"
+                        : item.type === "host_reply"
+                        ? "chatbubble-ellipses-outline"
+                        : "help-circle-outline"
+                    }
+                    size={16}
+                    color={
+                      item.type === "reaction"
+                        ? "#ef4444"
+                        : item.type === "host_reply"
+                        ? "rgba(255,255,255,0.7)"
+                        : "#60a5fa"
+                    }
+                    style={styles.chatBadge}
+                  />
+                  <View style={styles.chatMessageContent}>
+                    <Text style={[styles.chatSender, styles.textShadow]}>{item.user.name}</Text>
+                    <Text style={[styles.chatText, styles.textShadow]}>{item.content}</Text>
+                  </View>
+                </View>
+              )}
+            />
+          </View>
+
+          {/* Right side: reactions column + floating emojis */}
+          <View style={styles.sideControlsWrapper} pointerEvents="box-none">
+            <View style={styles.floatingReactions}>
+              {floatingReactions.map((r) => (
+                <Text key={r.id} style={styles.floatingEmoji}>{r.emoji}</Text>
+              ))}
+            </View>
+            <View style={styles.reactionBar}>
+              {REACTIONS.map((emoji) => (
+                <TouchableOpacity key={emoji} style={styles.reactionButton} onPress={() => sendReaction(emoji)}>
+                  <Text style={styles.reactionEmoji}>{emoji}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+
+        {/* Bottom input bar */}
+        <View
+          style={[
+            styles.inputBarWrapper,
+            { paddingBottom: Math.max(insets.bottom, 16) },
+          ]}
+        >
+          <View style={styles.inputRow}>
+            <TextInput
+              style={styles.questionInput}
+              placeholder="Ask a question..."
+              placeholderTextColor="rgba(255,255,255,0.5)"
+              value={questionText}
+              onChangeText={setQuestionText}
+              onSubmitEditing={sendQuestion}
+              returnKeyType="send"
+            />
+            <TouchableOpacity
+              style={[styles.sendButton, !questionText.trim() && { opacity: 0.5 }]}
+              onPress={sendQuestion}
+              disabled={!questionText.trim()}
+            >
+              <Text style={styles.sendText}>Send</Text>
             </TouchableOpacity>
-          ))}
-        </View>
-
-        <View style={styles.inputRow}>
-          <TextInput
-            style={styles.questionInput}
-            placeholder="Ask a question..."
-            placeholderTextColor="#64748b"
-            value={questionText}
-            onChangeText={setQuestionText}
-            onSubmitEditing={sendQuestion}
-            returnKeyType="send"
-          />
-          <TouchableOpacity style={styles.sendButton} onPress={sendQuestion}>
-            <Text style={styles.sendText}>Send</Text>
-          </TouchableOpacity>
+          </View>
         </View>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+
+      {/* Products Bottom Sheet Modal */}
+      <Modal
+        visible={showProducts}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowProducts(false)}
+      >
+        <View style={styles.bottomSheetOverlay}>
+          <TouchableOpacity
+            style={styles.bottomSheetBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowProducts(false)}
+          />
+          <View style={styles.bottomSheetCard}>
+            <View style={styles.bottomSheetHandle} />
+            <Text style={styles.bottomSheetHeading}>Products ({products.length})</Text>
+            <ScrollView
+              style={styles.productsSheetScroll}
+              contentContainerStyle={styles.productsSheetContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {products.map((item) => (
+                <View
+                  key={item.id}
+                  style={[
+                    styles.productCard,
+                    highlightedProduct === item.id && styles.productHighlighted,
+                  ]}
+                >
+                  <ImageWithFallback
+                    uri={item.imageUrl}
+                    style={styles.productImage}
+                    fallback={
+                      <Ionicons
+                        name="cube-outline"
+                        size={24}
+                        color={theme.textMuted}
+                        style={styles.productEmoji}
+                      />
+                    }
+                  />
+                  <View style={styles.productInfo}>
+                    <Text style={styles.productTitle}>{item.title}</Text>
+                    <Text style={styles.productPrice}>₹{item.price.toFixed(2)}</Text>
+                    <Text style={styles.productMeta}>Qty: {item.quantity}</Text>
+                    <Text style={styles.productMeta}>
+                      Sizes: {item.sizes?.join(", ") || "Not set"}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.wishlistBtn}
+                    onPress={() => toggleWishlist(item.id)}
+                  >
+                    <Ionicons
+                      name={wishlist.has(item.id) ? "heart" : "heart-outline"}
+                      size={22}
+                      color={wishlist.has(item.id) ? "#ef4444" : theme.textMuted}
+                    />
+                  </TouchableOpacity>
+                </View>
+              ))}
+              {products.length === 0 && (
+                <Text style={styles.noProducts}>No products showcased yet</Text>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
 const createStyles = (theme: AppTheme) =>
   StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.background },
+  container: { flex: 1, backgroundColor: "#000" },
+  keyboardView: { flex: 1 },
+
+  // Text shadow for readability over video
+  textShadow: {
+    color: "#fff",
+    textShadowColor: "rgba(0,0,0,0.7)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+
+  // Top bar
   topBar: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingBottom: 8,
   },
   topBarRight: {
     flexDirection: "row",
@@ -447,11 +527,11 @@ const createStyles = (theme: AppTheme) =>
     gap: 8,
   },
   backButton: { flexDirection: "row", alignItems: "center", gap: 6 },
-  backText: { color: theme.textMuted, fontSize: 16, fontWeight: "600" },
+  backText: { fontSize: 16, fontWeight: "600" },
   liveBadge: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(239, 68, 68, 0.15)",
+    backgroundColor: "rgba(239, 68, 68, 0.3)",
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 20,
@@ -464,37 +544,48 @@ const createStyles = (theme: AppTheme) =>
     marginRight: 6,
   },
   liveLabel: {
-    color: "#ef4444",
+    color: "#fff",
     fontWeight: "800",
     fontSize: 12,
   },
   viewerBadge: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: theme.surface,
+    backgroundColor: "rgba(0,0,0,0.3)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
   },
   viewerIcon: { marginRight: 4 },
-  viewerCountText: { color: theme.text, fontWeight: "700", fontSize: 14 },
-  videoContainer: {
-    marginHorizontal: 16,
-    position: "relative",
-    width: width - 32,
-    aspectRatio: 16 / 9,
+  viewerCountText: { color: "#fff", fontWeight: "700", fontSize: 14 },
+  productsHeaderButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "rgba(0,0,0,0.3)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  placeholderBox: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "transparent",
+  productsHeaderButtonActive: {
+    backgroundColor: theme.accent,
+    borderColor: theme.accent,
   },
+
+  // Session meta
+  sessionMeta: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8 },
+  sessionTitle: { fontSize: 18, fontWeight: "700" },
+  hostName: { fontSize: 14, marginTop: 2, color: "rgba(255,255,255,0.7)" },
+
+  // Stream ended overlay
   endedOverlay: {
-    width: "100%",
-    aspectRatio: 16 / 9,
-    backgroundColor: "#1a1a2e",
-    borderRadius: 12,
+    backgroundColor: "rgba(0,0,0,0.85)",
     justifyContent: "center",
     alignItems: "center",
+    zIndex: 100,
   },
   endedText: {
     color: "#94a3b8",
@@ -513,37 +604,159 @@ const createStyles = (theme: AppTheme) =>
     fontWeight: "700",
     fontSize: 14,
   },
-  floatingReactions: {
-    position: "absolute",
-    right: 12,
-    bottom: 12,
+
+  // Main content area (chat left, reactions right)
+  mainContentArea: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+  },
+
+  // Chat area - bottom left
+  chatAreaWrapper: {
+    maxHeight: 280,
+    flex: 0,
+    width: "60%",
+    alignSelf: "flex-end",
+  },
+  chatList: {
+    flex: 1,
+  },
+  chatListContent: {
+    paddingBottom: 8,
+    paddingLeft: 16,
+    paddingRight: 8,
+  },
+  chatMessage: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 8,
+  },
+  chatBadge: { marginRight: 6, marginTop: 2 },
+  chatMessageContent: { flex: 1 },
+  chatSender: { fontSize: 13, fontWeight: "700", color: "#60a5fa" },
+  chatText: { fontSize: 13, marginTop: 1 },
+  noMessages: { fontSize: 14, paddingHorizontal: 16 },
+
+  // Right side controls
+  sideControlsWrapper: {
+    justifyContent: "flex-end",
     alignItems: "center",
+    paddingBottom: 8,
+    paddingRight: 12,
+    width: 64,
+  },
+  floatingReactions: {
+    alignItems: "center",
+    marginBottom: 8,
   },
   floatingEmoji: { fontSize: 28, marginBottom: 4 },
-  sessionMeta: { paddingHorizontal: 16, paddingTop: 12 },
-  sessionTitle: { fontSize: 18, fontWeight: "700", color: theme.text },
-  hostName: { fontSize: 14, color: theme.textMuted, marginTop: 2 },
-  productsToggle: { paddingHorizontal: 16, paddingTop: 12 },
-  productsToggleContent: { flexDirection: "row", alignItems: "center", gap: 4 },
-  productsToggleText: { color: theme.accent, fontWeight: "700", fontSize: 14 },
-  productsList: { paddingHorizontal: 16, paddingTop: 8 },
-  productCard: {
-    backgroundColor: theme.surface,
-    borderRadius: 12,
-    padding: 14,
-    marginRight: 12,
-    width: 140,
+  reactionBar: {
     alignItems: "center",
-    position: "relative",
+    gap: 4,
   },
-  wishlistBtn: {
-    position: "absolute",
-    top: 6,
-    right: 6,
-    zIndex: 10,
-    padding: 6,
-    backgroundColor: theme.surfaceAlt,
-    borderRadius: 16,
+  reactionButton: {
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderRadius: 20,
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  reactionEmoji: { fontSize: 22 },
+
+  // Bottom input bar
+  inputBarWrapper: {
+    backgroundColor: "transparent",
+    paddingVertical: 8,
+  },
+  inputRow: {
+    flexDirection: "row",
+    paddingHorizontal: 16,
+    gap: 8,
+    alignItems: "flex-end",
+  },
+  questionInput: {
+    flex: 1,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: Platform.OS === "ios" ? 10 : 8,
+    fontSize: 15,
+    color: "#fff",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+    minHeight: 44,
+  },
+  sendButton: {
+    backgroundColor: theme.accent,
+    borderRadius: 12,
+    paddingHorizontal: 20,
+    height: 44,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  sendText: { color: theme.textOnAccent, fontWeight: "700", fontSize: 15 },
+
+  // Products bottom sheet
+  bottomSheetOverlay: {
+    flex: 1,
+    justifyContent: "flex-end",
+  },
+  bottomSheetBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(2, 6, 23, 0.38)",
+  },
+  bottomSheetCard: {
+    maxHeight: "78%",
+    backgroundColor: theme.surface,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    borderColor: theme.border,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === "ios" ? 26 : 18,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: -6 },
+        shadowOpacity: 0.12,
+        shadowRadius: 18,
+      },
+      android: {
+        elevation: 24,
+      },
+    }),
+  },
+  bottomSheetHandle: {
+    alignSelf: "center",
+    width: 42,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: theme.border,
+    marginBottom: 12,
+  },
+  bottomSheetHeading: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: theme.text,
+    marginHorizontal: 20,
+    marginBottom: 2,
+  },
+  productsSheetScroll: { maxHeight: "100%" },
+  productsSheetContent: { paddingTop: 10, paddingBottom: 24 },
+  productCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: theme.surface,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.border,
   },
   productHighlighted: {
     borderWidth: 2,
@@ -553,53 +766,15 @@ const createStyles = (theme: AppTheme) =>
   productImage: {
     width: 48,
     height: 48,
-    borderRadius: 8,
-    marginBottom: 6,
-  },
-  productEmoji: { marginBottom: 6 },
-  productTitle: { fontSize: 13, fontWeight: "600", color: theme.text, textAlign: "center" },
-  productPrice: { fontSize: 14, color: theme.textMuted, fontWeight: "700", marginTop: 4 },
-  productMeta: { fontSize: 12, color: theme.textMuted, marginTop: 2, textAlign: "center" },
-  chatSection: { flex: 1, marginTop: 8 },
-  chatList: { paddingHorizontal: 16 },
-  chatMessage: { flexDirection: "row", flexWrap: "wrap", marginBottom: 6 },
-  chatBadge: { marginRight: 4, marginTop: 1 },
-  chatSender: { fontSize: 13, fontWeight: "700", color: theme.accent },
-  chatText: { fontSize: 13, color: theme.text },
-  reactionBar: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    backgroundColor: theme.surface,
-    marginHorizontal: 16,
     borderRadius: 12,
   },
-  reactionButton: { padding: 6 },
-  reactionEmoji: { fontSize: 24 },
-  inputRow: {
-    flexDirection: "row",
-    padding: 12,
-    paddingHorizontal: 16,
-    gap: 8,
+  productEmoji: {},
+  productInfo: { flex: 1, marginLeft: 12 },
+  productTitle: { fontSize: 15, fontWeight: "600", color: theme.text },
+  productPrice: { fontSize: 14, color: theme.textMuted, fontWeight: "700", marginTop: 2 },
+  productMeta: { fontSize: 12, color: theme.textMuted, marginTop: 2 },
+  wishlistBtn: {
+    padding: 8,
   },
-  questionInput: {
-    flex: 1,
-    backgroundColor: theme.surface,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 15,
-    color: theme.text,
-    borderWidth: 1,
-    borderColor: theme.border,
-    minHeight: 44,
-  },
-  sendButton: {
-    backgroundColor: theme.accent,
-    borderRadius: 12,
-    paddingHorizontal: 20,
-    justifyContent: "center",
-  },
-  sendText: { color: theme.textOnAccent, fontWeight: "700", fontSize: 15 },
+  noProducts: { color: theme.textMuted, fontSize: 14, marginHorizontal: 16 },
 });

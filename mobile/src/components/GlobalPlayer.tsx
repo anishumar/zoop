@@ -27,17 +27,11 @@ export default function GlobalPlayer() {
   const isCurrentScreenViewer = segments[0] === "viewer";
   const isCurrentScreenHost = segments[0] === "host";
   
-  if (!activeSession || isCurrentScreenHost) return null;
+  if (!activeSession || isCurrentScreenHost || isCurrentScreenViewer) return null;
 
-  // Mode:
-  // 1. Expanded (Full Screen on Viewer Screen)
-  // 2. Minimized (Small floating window)
-  
-  // We should only show in "Expanded" mode if we are actually on the viewer screen.
-  // Otherwise, if we aren't on the viewer screen but it's not minimized, we should probably minimize it.
-  const mode = isCurrentScreenViewer && !isMinimized ? "expanded" : "minimized";
-
-  if (mode === "minimized" && keyboardVisible) return null;
+  // GlobalPlayer now only serves the minimized mini-player mode.
+  // Both host and viewer screens render their own fullscreen VideoPlayer.
+  if (keyboardVisible) return null;
 
   const handleExpand = () => {
     if (!activeSession) return;
@@ -47,15 +41,8 @@ export default function GlobalPlayer() {
 
   const streamType = (activeSession.streamType as "mock" | "livekit") || "livekit";
 
-  // Calculate position styles
-  const containerStyle = mode === "expanded" ? {
-    top: insets.top + (Platform.OS === "android" ? 54 : 48), // under the TopBar
-    left: 16,
-    right: 16,
-    height: (width - 32) * 9 / 16,
-    borderRadius: 12,
-  } : {
-    bottom: 64, // Positioned slightly above the navigation bar
+  const containerStyle = {
+    bottom: 64,
     left: 8,
     width: 120,
     height: 76,
@@ -77,7 +64,7 @@ export default function GlobalPlayer() {
         livekitToken={lkToken}
         livekitUrl={lkUrl}
         isHost={isHost}
-        isMini={mode === "minimized"}
+        isMini={true}
       />
     </TouchableOpacity>
   );

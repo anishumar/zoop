@@ -5,7 +5,7 @@ import { sendSuccess } from "../utils/ApiResponse";
 import { ApiError } from "../utils/ApiError";
 
 export const followUser = catchAsync(async (req: Request, res: Response) => {
-  const followingId = req.params.id;
+  const followingId = req.params.id as string;
   if (!followingId) {
     throw new ApiError(400, "User ID is required");
   }
@@ -14,7 +14,7 @@ export const followUser = catchAsync(async (req: Request, res: Response) => {
 });
 
 export const unfollowUser = catchAsync(async (req: Request, res: Response) => {
-  const followingId = req.params.id;
+  const followingId = req.params.id as string;
   if (!followingId) {
     throw new ApiError(400, "User ID is required");
   }
@@ -33,7 +33,7 @@ export const getFollowers = catchAsync(async (req: Request, res: Response) => {
 });
 
 export const checkFollowing = catchAsync(async (req: Request, res: Response) => {
-  const followingId = req.params.id;
+  const followingId = req.params.id as string;
   if (!followingId) {
     throw new ApiError(400, "User ID is required");
   }
