@@ -43,11 +43,6 @@ function extensionForMime(mimeType: string) {
   return map[mimeType] || "bin";
 }
 
-function buildPublicUrl(key: string) {
-  if (publicUrl) return `${publicUrl.replace(/\/$/, "")}/${key}`;
-  return `https://${accountId}.r2.cloudflarestorage.com/${bucket}/${key}`;
-}
-
 /* ── Entity definitions ─────────────────────────────────────── */
 
 type EntityType = "product" | "avatar" | "stream" | "reel" | "thumbnail";
@@ -120,6 +115,11 @@ export class StorageService {
     return this.client;
   }
 
+  static buildPublicUrl(key: string) {
+    if (publicUrl) return `${publicUrl.replace(/\/$/, "")}/${key}`;
+    return `https://${accountId}.r2.cloudflarestorage.com/${bucket}/${key}`;
+  }
+
   /**
    * Generic presign method for any supported entity type.
    */
@@ -157,7 +157,7 @@ export class StorageService {
     return {
       uploadUrl,
       key,
-      publicUrl: buildPublicUrl(key),
+      publicUrl: StorageService.buildPublicUrl(key),
       headers: { "Content-Type": input.mimeType },
     };
   }

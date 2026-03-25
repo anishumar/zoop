@@ -1,6 +1,7 @@
 import {
   AccessToken,
   RoomServiceClient,
+  EgressClient,
   WebhookReceiver,
   type VideoGrant,
   type WebhookEvent,
@@ -19,11 +20,79 @@ const roomService = new RoomServiceClient(
   LIVEKIT_API_SECRET
 );
 
+const egressClient = new EgressClient(
+  LIVEKIT_URL,
+  LIVEKIT_API_KEY,
+  LIVEKIT_API_SECRET
+);
+
 const webhookReceiver = process.env.LIVEKIT_API_KEY
   ? new WebhookReceiver(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
   : null;
 
 export class LiveKitService {
+  /**
+   * Start recording a room to Cloudflare R2.
+   */
+  static async startRoomRecording(roomName: string, sessionId: string) {
+    const bucket = process.env.R2_BUCKET;
+    const accountId = process.env.R2_ACCOUNT_ID;
+    const accessKey = process.env.R2_ACCESS_KEY;
+    const secret = process.env.R2_SECRET_KEY;
+
+    if (!bucket || !accountId || !accessKey || !secret) {
+      console.warn("Egress ignored: R2 storage not fully configured.", {
+        hasBucket: !!bucket,
+        hasAccountId: !!accountId,
+        hasAccessKey: !!accessKey,
+        hasSecret: !!secret,
+      });
+      return null;
+    }
+
+    try {
+      const output = {
+        filepath: `recordings/${sessionId}.mp4`,
+        fileType: 1, // MP4 = 1
+        output: {
+          case: "s3",
+          value: {
+            bucket,
+            accessKey,
+            secret,
+            endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+            region: "auto",
+            forcePathStyle: true,
+          },
+        },
+      };
+
+      console.log(`[Egress] Starting room composite for ${roomName} with nested S3 output.`);
+
+      const info = await egressClient.startRoomCompositeEgress(
+        roomName,
+        output as any,
+        { layout: "grid" }
+      );
+      return info.egressId;
+    } catch (err: any) {
+      console.error("Failed to start LiveKit Egress:", {
+        message: err.message,
+        roomName,
+        sessionId,
+      });
+      return null;
+    }
+  }
+
+  static async stopRecording(egressId: string) {
+    try {
+      await egressClient.stopEgress(egressId);
+    } catch (err) {
+      // It might have already stopped
+    }
+  }
+
   /**
    * Generate an access token for a participant.
    * Hosts get publish + subscribe grants; viewers get subscribe-only.

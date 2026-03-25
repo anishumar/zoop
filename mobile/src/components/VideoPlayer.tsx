@@ -1,9 +1,10 @@
 import React from "react";
 import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
+import { Video, ResizeMode } from "expo-av";
 import LiveKitRoom from "./LiveKitRoom";
 
 interface VideoPlayerProps {
-  streamType: "mock" | "livekit";
+  streamType: "mock" | "livekit" | "vod";
   streamUrl?: string | null;
   livekitToken?: string | null;
   livekitUrl?: string | null;
@@ -49,6 +50,25 @@ export default function VideoPlayer({
           onParticipantCountChange={onParticipantCountChange}
           isFullscreen={isFullscreen}
           isMini={isMini}
+        />
+      </View>
+    );
+  }
+
+  if (streamType === "vod" && streamUrl) {
+    return (
+      <View style={[
+        styles.wrapper,
+        isFullscreen && styles.wrapperFullscreen,
+        isMini && styles.wrapperMini
+      ]}>
+        <Video
+          source={{ uri: streamUrl }}
+          style={StyleSheet.absoluteFill}
+          resizeMode={ResizeMode.COVER}
+          shouldPlay={true}
+          isLooping={true}
+          useNativeControls={!isMini}
         />
       </View>
     );

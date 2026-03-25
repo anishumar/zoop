@@ -102,3 +102,11 @@ export const generateAiEngagementSummary = catchAsync(async (req: Request, res: 
 
   sendSuccess(res, summary, "AI engagement summary generated");
 });
+
+export const getUserArchivedSessions = catchAsync(async (req: Request, res: Response) => {
+  const hostId = String(req.params.hostId);
+  const page = parseInt(String(req.query.page)) || 1;
+  const limit = parseInt(String(req.query.limit)) || 20;
+  const result = await SessionService.listUserArchived(hostId, page, limit);
+  sendSuccess(res, result);
+});

@@ -16,12 +16,12 @@ import {
   ScrollView,
   Image,
 } from "react-native";
-import { useFocusEffect, Stack } from "expo-router";
+import { useRouter, useFocusEffect, Stack } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useAuth } from "../../src/contexts/AuthContext";
 import { apiClient } from "../../src/api/client";
-import { Product, User, ApiResponse } from "../../src/types";
+import { Product, User, ApiResponse, LiveSession } from "../../src/types";
 import { AppTheme, useAppTheme } from "../../src/theme";
 import { uploadProductImage } from "../../src/api/uploads";
 import ImageWithFallback from "../../src/components/ImageWithFallback";
@@ -43,7 +43,8 @@ const CARD_WIDTH = (SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GAP) / 2;
 const PRODUCT_SIZE_OPTIONS = ["S", "M", "L", "XL", "Free Size"] as const;
 
 export default function ProfileScreen() {
-  const { user, logout, setUser } = useAuth();
+  const { user, loading, logout, setUser } = useAuth();
+  const router = useRouter();
   const theme = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
 
@@ -54,6 +55,8 @@ export default function ProfileScreen() {
   const [showCreateMenu, setShowCreateMenu] = useState(false);
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
+  const [streams, setStreams] = useState<LiveSession[]>([]);
+  const [fetchingStreams, setFetchingStreams] = useState(false);
 
 
 
@@ -78,15 +81,17 @@ export default function ProfileScreen() {
   // ─── Data Fetching ──────────────────────────────────
 
   const fetchProducts = useCallback(async () => {
+    if (!user) return;
     try {
       const res = await apiClient<ApiResponse<ProductListResponse>>("/products");
       setProducts(res.data.products);
     } catch (err: any) {
       console.error("Failed to fetch products:", err.message);
     }
-  }, []);
+  }, [user]);
 
   const fetchFollowCounts = useCallback(async () => {
+    if (!user) return;
     try {
       const [followersRes, followingRes] = await Promise.all([
         apiClient<ApiResponse<{ users: { id: string }[]; total: number }>>("/users/followers"),
@@ -97,18 +102,35 @@ export default function ProfileScreen() {
     } catch {
       // silently fail
     }
-  }, []);
+  }, [user]);
+
+  const fetchStreams = useCallback(async () => {
+    if (!user) return;
+    setFetchingStreams(true);
+    try {
+      const res = await apiClient<ApiResponse<{ sessions: LiveSession[] }>>(
+        `/sessions/user/${user.id}/archived`
+      );
+      setStreams(res.data.sessions);
+    } catch (err: any) {
+      console.error("Failed to fetch streams:", err.message);
+    } finally {
+      setFetchingStreams(false);
+    }
+  }, [user]);
 
   useFocusEffect(
     useCallback(() => {
+      if (loading || !user) return;
       fetchProducts();
       fetchFollowCounts();
-    }, [fetchProducts, fetchFollowCounts])
+      fetchStreams();
+    }, [loading, user, fetchProducts, fetchFollowCounts, fetchStreams])
   );
 
   async function handleRefresh() {
     setRefreshing(true);
-    await Promise.all([fetchProducts(), fetchFollowCounts()]);
+    await Promise.all([fetchProducts(), fetchFollowCounts(), fetchStreams()]);
     setRefreshing(false);
   }
 
@@ -264,7 +286,7 @@ export default function ProfileScreen() {
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>0</Text>
+            <Text style={styles.statValue}>{streams.length}</Text>
             <Text style={styles.statLabel}>Streams</Text>
           </View>
           <View style={styles.statDivider} />
@@ -332,6 +354,35 @@ export default function ProfileScreen() {
               <Text style={styles.gridCardMetaText} numberOfLines={1}>{item.sizes.join(", ")}</Text>
             )}
           </View>
+        </View>
+      </TouchableOpacity>
+    );
+  }
+
+  function renderStreamCard({ item }: { item: LiveSession }) {
+    return (
+      <TouchableOpacity
+        style={styles.streamCard}
+        onPress={() => router.push(`/viewer/${item.id}`)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.streamThumbnail}>
+          {item.thumbnailUrl ? (
+            <Image source={{ uri: item.thumbnailUrl }} style={styles.streamThumbnailImage} />
+          ) : (
+            <View style={styles.streamThumbnailPlaceholder}>
+              <Ionicons name="videocam-outline" size={32} color={theme.textMuted} />
+            </View>
+          )}
+          <View style={styles.playOverlay}>
+            <Ionicons name="play" size={24} color="#fff" />
+          </View>
+        </View>
+        <View style={styles.streamInfo}>
+          <Text style={styles.streamTitle} numberOfLines={1}>{item.title}</Text>
+          <Text style={styles.streamDate}>
+            {item.endedAt ? new Date(item.endedAt).toLocaleDateString() : "Recently Recorded"}
+          </Text>
         </View>
       </TouchableOpacity>
     );
@@ -544,15 +595,16 @@ export default function ProfileScreen() {
         />
       ) : (
         <FlatList
-          key="streams-list-1-col"
-          data={[]}
-          keyExtractor={() => "empty"}
-          renderItem={() => null}
-          numColumns={1}
+          key="streams-list-2-col"
+          data={streams}
+          keyExtractor={(item) => item.id}
+          renderItem={renderStreamCard}
+          numColumns={2}
           ListHeaderComponent={renderProfileHeader}
           contentContainerStyle={styles.gridList}
+          columnWrapperStyle={styles.gridRow}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.accent} />}
-          ListEmptyComponent={renderStreamsEmpty}
+          ListEmptyComponent={fetchingStreams ? <ActivityIndicator style={{ marginTop: 40 }} /> : renderStreamsEmpty}
         />
       )}
     </View>
@@ -731,4 +783,50 @@ const createStyles = (theme: AppTheme) =>
       justifyContent: "center", alignItems: "center", zIndex: 999,
     },
     savingText: { color: "#fff", fontSize: 16, fontWeight: "600", marginTop: 12 },
+    
+    // Stream List
+    streamCard: {
+      width: CARD_WIDTH,
+      backgroundColor: theme.surface,
+      borderRadius: 14,
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    streamThumbnail: {
+      width: "100%",
+      height: CARD_WIDTH * 0.75, // Aspect ratio for stream thumbs
+      backgroundColor: theme.surfaceAlt,
+      position: "relative",
+    },
+    streamThumbnailImage: {
+      width: "100%",
+      height: "100%",
+    },
+    streamThumbnailPlaceholder: {
+      width: "100%",
+      height: "100%",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    playOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: "rgba(0,0,0,0.25)",
+      justifyContent: "center",
+      alignItems: "center",
+      zIndex: 1,
+    },
+    streamInfo: {
+      padding: 10,
+    },
+    streamTitle: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: theme.text,
+    },
+    streamDate: {
+      fontSize: 12,
+      color: theme.textMuted,
+      marginTop: 3,
+    },
   });

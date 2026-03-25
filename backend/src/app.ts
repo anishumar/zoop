@@ -6,7 +6,14 @@ import { errorHandler } from "./middlewares/errorHandler";
 const app = express();
 
 app.use(cors());
-app.use(express.json());
+app.use(
+  express.json({
+    type: ["application/json", "application/*+json"],
+    verify: (req: any, _res, buf) => {
+      req.rawBody = buf.toString();
+    },
+  })
+);
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });

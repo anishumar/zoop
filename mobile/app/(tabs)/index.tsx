@@ -145,10 +145,17 @@ export default function HomeScreen() {
         activeOpacity={0.7}
       >
         <View style={styles.sessionVideoPlaceholder}>
-          <View style={styles.liveBadge}>
-            <View style={styles.liveDot} />
-            <Text style={styles.liveText}>LIVE</Text>
-          </View>
+          {item.isLive ? (
+            <View style={styles.liveBadge}>
+              <View style={styles.liveDot} />
+              <Text style={styles.liveText}>LIVE</Text>
+            </View>
+          ) : item.recordingUrl ? (
+            <View style={[styles.liveBadge, { backgroundColor: "rgba(30, 41, 59, 0.8)" }]}>
+              <Ionicons name="play-circle" size={12} color="#fff" style={{ marginRight: 4 }} />
+              <Text style={styles.liveText}>RECORDED</Text>
+            </View>
+          ) : null}
           <Ionicons name="videocam" size={48} color={theme.textMuted} />
         </View>
         <View style={styles.sessionInfo}>

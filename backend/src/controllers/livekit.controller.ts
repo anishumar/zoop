@@ -3,6 +3,7 @@ import { LiveKitService } from "../services/livekit.service";
 import { catchAsync } from "../utils/catchAsync";
 import { sendSuccess } from "../utils/ApiResponse";
 import { ApiError } from "../utils/ApiError";
+import { StorageService } from "../services/storage.service";
 import prisma from "../prisma/client";
 
 /**
@@ -60,32 +61,98 @@ export const getToken = catchAsync(async (req: Request, res: Response) => {
  */
 export const handleWebhook = catchAsync(async (req: Request, res: Response) => {
   const authHeader = req.headers["authorization"] as string;
-  const body =
-    typeof req.body === "string" ? req.body : JSON.stringify(req.body);
+  const body = (req as any).rawBody || (typeof req.body === "string" ? req.body : JSON.stringify(req.body)) || "";
 
+  console.log(`[Webhook] Received event: ${body.substring(0, 100)}${body.length > 100 ? "..." : ""}`);
   const event = await LiveKitService.validateWebhook(body, authHeader);
   if (!event) {
+    console.warn("[Webhook] Validation failed for request from LiveKit");
     res.status(200).json({ received: true });
     return;
   }
+  console.log(`[Webhook] Validated event: ${event.event} for room: ${event.room?.name}`);
 
   const roomName = event.room?.name;
-  if (!roomName?.startsWith("session-")) {
-    res.status(200).json({ received: true });
-    return;
-  }
-
-  const sessionId = roomName.replace("session-", "");
+  const sessionId = roomName?.startsWith("session-") ? roomName.replace("session-", "") : null;
 
   switch (event.event) {
     case "room_finished": {
-      await prisma.liveSession.updateMany({
-        where: { id: sessionId, isLive: true },
-        data: { isLive: false, endedAt: new Date() },
+      if (sessionId) {
+        await prisma.liveSession.updateMany({
+          where: { id: sessionId, isLive: true },
+          data: { isLive: false, endedAt: new Date() },
+        });
+      }
+      break;
+    }
+    case "egress_ended": {
+      const egressInfo = event.egressInfo;
+      console.log(`[Webhook] Egress ended: ${egressInfo?.egressId}, status: ${egressInfo?.status}`);
+      
+      if (egressInfo) {
+        const file = (egressInfo.fileResults && egressInfo.fileResults.length > 0) 
+          ? egressInfo.fileResults[0] 
+          : (egressInfo as any).file;
+          
+        if (file) {
+          const publicUrl = StorageService.buildPublicUrl(file.filename);
+          console.log(`[Webhook] Recording found at: ${publicUrl}`);
+          
+          let targetSessionId = sessionId;
+          if (!targetSessionId && file.filename.startsWith("recordings/")) {
+            targetSessionId = file.filename.split("/").pop()?.replace(".mp4", "") || "";
+          }
+
+          if (targetSessionId || egressInfo.egressId) {
+            const result = await prisma.liveSession.updateMany({
+              where: {
+                OR: [
+                  { egressId: egressInfo.egressId },
+                  ...(targetSessionId ? [{ id: targetSessionId }] : [])
+                ]
+              },
+              data: { recordingUrl: publicUrl },
+            });
+            console.log(`[Webhook] Updated ${result.count} sessions with recording URL.`);
+          }
+        }
+      }
+      break;
+    }
+    case "participant_joined": {
+      const count = await LiveKitService.getParticipantCount(roomName);
+      await prisma.liveSession.update({
+        where: { id: sessionId },
+        data: { viewerCount: Math.max(0, count - 1) },
       });
       break;
     }
-    case "participant_joined":
+    case "track_published": {
+      const participantIdentity = event.participant?.identity;
+      const session = await prisma.liveSession.findUnique({
+        where: { id: sessionId },
+        select: { hostId: true, egressId: true }
+      });
+
+      // If the host published a track and we haven't started recording yet
+      if (session && participantIdentity === session.hostId && !session.egressId) {
+        console.log(`[Webhook] Host started publishing in session ${sessionId}, starting recording...`);
+        // Ensure the room exists before starting recording (idempotent)
+        await LiveKitService.createRoom(roomName, {
+          emptyTimeout: 300,
+          maxParticipants: 10000,
+        });
+        const egressId = await LiveKitService.startRoomRecording(roomName, sessionId);
+        if (egressId) {
+          console.log(`[Webhook] Egress started successfully: ${egressId}`);
+          await prisma.liveSession.update({
+            where: { id: sessionId },
+            data: { egressId }
+          });
+        }
+      }
+      break;
+    }
     case "participant_left": {
       const count = await LiveKitService.getParticipantCount(roomName);
       await prisma.liveSession.update({

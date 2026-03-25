@@ -23,10 +23,12 @@ export class SessionService {
           emptyTimeout: 300,
           maxParticipants: 10000,
         });
+        const egressId = await LiveKitService.startRoomRecording(roomName, session.id);
         return prisma.liveSession.update({
           where: { id: session.id },
           data: {
             roomName,
+            egressId,
             streamUrl: process.env.LIVEKIT_URL || "ws://localhost:7880",
             isLive: true,
             startedAt: new Date(),
@@ -55,6 +57,11 @@ export class SessionService {
     const session = await prisma.liveSession.findUnique({ where: { id: sessionId } });
     if (!session) throw new ApiError(404, "Session not found");
     if (session.hostId !== hostId) throw new ApiError(403, "Only the host can end this session");
+
+
+    if (session.egressId) {
+      await LiveKitService.stopRecording(session.egressId);
+    }
 
     if (session.roomName) {
       await LiveKitService.deleteRoom(session.roomName);
@@ -87,7 +94,6 @@ export class SessionService {
   static async listLiveFollowing(userId: string, page = 1, limit = 20) {
     const skip = (page - 1) * limit;
 
-    // Get IDs of users this person follows
     const follows = await prisma.follow.findMany({
       where: { followerId: userId },
       select: { followingId: true },
@@ -98,15 +104,40 @@ export class SessionService {
       return { sessions: [], total: 0, page, totalPages: 0 };
     }
 
-    const where = { isLive: true, hostId: { in: followedIds } };
+    // Include both currently live sessions AND those that have a recording
+    const where = {
+      hostId: { in: followedIds },
+      OR: [{ isLive: true }, { recordingUrl: { not: null } }],
+    };
+
     const [sessions, total] = await Promise.all([
       prisma.liveSession.findMany({
         where,
         skip,
         take: limit,
-        orderBy: { startedAt: "desc" },
+        orderBy: [{ isLive: "desc" }, { startedAt: "desc" }],
         include: {
-          host: { select: { id: true, name: true } },
+          host: { select: { id: true, name: true, avatarUrl: true } },
+          sessionProducts: { include: { product: true } },
+        },
+      }),
+      prisma.liveSession.count({ where }),
+    ]);
+    return { sessions, total, page, totalPages: Math.ceil(total / limit) };
+  }
+
+  static async listUserArchived(hostId: string, page = 1, limit = 20) {
+    const skip = (page - 1) * limit;
+    const where = { hostId, recordingUrl: { not: null } };
+
+    const [sessions, total] = await Promise.all([
+      prisma.liveSession.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { endedAt: "desc" },
+        include: {
+          host: { select: { id: true, name: true, avatarUrl: true } },
           sessionProducts: { include: { product: true } },
         },
       }),

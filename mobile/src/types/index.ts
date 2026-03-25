@@ -30,7 +30,9 @@ export interface LiveSession {
   startedAt: string | null;
   endedAt: string | null;
   streamUrl: string | null;
-  streamType: "mock" | "livekit";
+  recordingUrl?: string | null;
+  egressId?: string | null;
+  streamType: "mock" | "livekit" | "vod";
   roomName: string | null;
   viewerCount: number;
   peakViewers: number;

@@ -69,7 +69,8 @@ export default function ViewerScreen() {
 
   function handleBack() {
     console.log("handleBack called, session:", session?.id, "streamEnded:", streamEnded);
-    if (session && !streamEnded) {
+    // Only minimize for active live sessions
+    if (session && session.isLive && !streamEnded) {
       console.log("Minimizing player...");
       isMinimizing.current = true;
       openPlayer(session, effectiveToken, effectiveUrl, true);
@@ -87,8 +88,6 @@ export default function ViewerScreen() {
 
   useEffect(() => {
     loadSession();
-    setupSocket();
-    fetchLiveKitToken();
     fetchWishlist();
 
     return () => {
@@ -147,6 +146,11 @@ export default function ViewerScreen() {
       setSession(res.data);
       setMessages((res.data.messages || []).slice(0, MAX_CHAT_MESSAGES));
       setViewerCount(res.data.viewerCount || 0);
+
+      if (res.data.isLive) {
+        setupSocket();
+        fetchLiveKitToken();
+      }
     } catch {}
   }
 
@@ -259,7 +263,11 @@ export default function ViewerScreen() {
   }
 
   const products = session?.sessionProducts?.map((sp) => sp.product) || [];
-  const streamType = (session?.streamType as "mock" | "livekit") || "livekit";
+  
+  // Logic to determine if we should show live or VOD
+  const isVod = !session?.isLive && !!session?.recordingUrl;
+  const streamType = isVod ? "vod" : ((session?.streamType as "mock" | "livekit") || "livekit");
+  const displayStreamUrl = isVod ? session?.recordingUrl : session?.streamUrl;
 
   const handleConnectionChange = (connected: boolean) => {
     setStreamConnected(connected);
@@ -271,7 +279,7 @@ export default function ViewerScreen() {
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
         <VideoPlayer
           streamType={streamType}
-          streamUrl={session?.streamUrl}
+          streamUrl={displayStreamUrl}
           livekitToken={effectiveToken}
           livekitUrl={effectiveUrl}
           isHost={false}
@@ -280,7 +288,8 @@ export default function ViewerScreen() {
         />
       </View>
 
-      {streamEnded && (
+      {/* Show ended overlay only if it's NOT a VOD and stream has ended during session */}
+      {streamEnded && !isVod && (
         <View style={[StyleSheet.absoluteFill, styles.endedOverlay]}>
           <Text style={styles.endedText}>Stream has ended</Text>
           <TouchableOpacity style={styles.goBackButton} onPress={handleBack}>
@@ -383,49 +392,53 @@ export default function ViewerScreen() {
             />
           </View>
 
-          {/* Right side: reactions column + floating emojis */}
-          <View style={styles.sideControlsWrapper} pointerEvents="box-none">
-            <View style={styles.floatingReactions}>
-              {floatingReactions.map((r) => (
-                <Text key={r.id} style={styles.floatingEmoji}>{r.emoji}</Text>
-              ))}
+          {/* Right side: reactions column + floating emojis (ONLY FOR LIVE) */}
+          {session?.isLive && (
+            <View style={styles.sideControlsWrapper} pointerEvents="box-none">
+              <View style={styles.floatingReactions}>
+                {floatingReactions.map((r) => (
+                  <Text key={r.id} style={styles.floatingEmoji}>{r.emoji}</Text>
+                ))}
+              </View>
+              <View style={styles.reactionBar}>
+                {REACTIONS.map((emoji) => (
+                  <TouchableOpacity key={emoji} style={styles.reactionButton} onPress={() => sendReaction(emoji)}>
+                    <Text style={styles.reactionEmoji}>{emoji}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
-            <View style={styles.reactionBar}>
-              {REACTIONS.map((emoji) => (
-                <TouchableOpacity key={emoji} style={styles.reactionButton} onPress={() => sendReaction(emoji)}>
-                  <Text style={styles.reactionEmoji}>{emoji}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
+          )}
         </View>
 
-        {/* Bottom input bar */}
-        <View
-          style={[
-            styles.inputBarWrapper,
-            { paddingBottom: Math.max(insets.bottom, 16) },
-          ]}
-        >
-          <View style={styles.inputRow}>
-            <TextInput
-              style={styles.questionInput}
-              placeholder="Ask a question..."
-              placeholderTextColor="rgba(255,255,255,0.5)"
-              value={questionText}
-              onChangeText={setQuestionText}
-              onSubmitEditing={sendQuestion}
-              returnKeyType="send"
-            />
-            <TouchableOpacity
-              style={[styles.sendButton, !questionText.trim() && { opacity: 0.5 }]}
-              onPress={sendQuestion}
-              disabled={!questionText.trim()}
-            >
-              <Text style={styles.sendText}>Send</Text>
-            </TouchableOpacity>
+        {/* Bottom input bar (ONLY FOR LIVE) */}
+        {session?.isLive && (
+          <View
+            style={[
+              styles.inputBarWrapper,
+              { paddingBottom: Math.max(insets.bottom, 16) },
+            ]}
+          >
+            <View style={styles.inputRow}>
+              <TextInput
+                style={styles.questionInput}
+                placeholder="Ask a question..."
+                placeholderTextColor="rgba(255,255,255,0.5)"
+                value={questionText}
+                onChangeText={setQuestionText}
+                onSubmitEditing={sendQuestion}
+                returnKeyType="send"
+              />
+              <TouchableOpacity
+                style={[styles.sendButton, !questionText.trim() && { opacity: 0.5 }]}
+                onPress={sendQuestion}
+                disabled={!questionText.trim()}
+              >
+                <Text style={styles.sendText}>Send</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
+        )}
       </KeyboardAvoidingView>
 
       {/* Products Bottom Sheet Modal */}

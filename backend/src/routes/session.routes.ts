@@ -10,6 +10,7 @@ import {
   getSessionAnalytics,
   generateAiReplySuggestion,
   generateAiEngagementSummary,
+  getUserArchivedSessions,
 } from "../controllers/session.controller";
 import { authenticate } from "../middlewares/auth";
 import { rateLimiter } from "../middlewares/rateLimiter";
@@ -23,6 +24,7 @@ router.get("/:id/analytics", getSessionAnalytics);
 router.use(authenticate);
 
 router.get("/live/following", listLiveFollowingSessions);
+router.get("/user/:hostId/archived", getUserArchivedSessions);
 
 router.post(
   "/",
