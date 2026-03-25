@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   createSession,
   endSession,
+  deleteSession,
   listLiveSessions,
   listLiveFollowingSessions,
   getSession,
@@ -55,6 +56,11 @@ router.delete(
   "/:id/products",
   rateLimiter(120, 60_000, (req) => req.user?.userId || req.ip || "unknown"),
   removeProductFromSession
+);
+router.delete(
+  "/:id",
+  rateLimiter(30, 60_000, (req) => req.user?.userId || req.ip || "unknown"),
+  deleteSession
 );
 
 export default router;

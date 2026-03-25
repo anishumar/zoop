@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   createProduct,
   getMyProducts,
+  getUserProducts,
   getProduct,
   generateProductAiSummary,
   updateProduct,
@@ -17,6 +18,7 @@ router.use(authenticate);
 
 router.post("/", createProduct);
 router.get("/", getMyProducts);
+router.get("/user/:userId", getUserProducts);
 router.post("/:id/ai-summary", generateProductAiSummary);
 router.get("/:id", getProduct);
 router.put("/:id", updateProduct);

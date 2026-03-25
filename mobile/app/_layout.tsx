@@ -65,6 +65,7 @@ function RootNavigator() {
         <Stack.Screen name="(auth)" options={{ animation: "fade" }} />
         <Stack.Screen name="viewer/[id]" />
         <Stack.Screen name="host/[id]" />
+        <Stack.Screen name="user/[id]" options={{ headerShown: true, headerBackTitle: "" }} />
       </Stack>
       <MiniPlayer />
       <GlobalPlayer />

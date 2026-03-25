@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -15,7 +15,9 @@ import {
   KeyboardAvoidingView,
   ScrollView,
   Image,
+  Animated,
 } from "react-native";
+
 import { useRouter, useFocusEffect, Stack } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
@@ -57,6 +59,16 @@ export default function ProfileScreen() {
   const [followingCount, setFollowingCount] = useState(0);
   const [streams, setStreams] = useState<LiveSession[]>([]);
   const [fetchingStreams, setFetchingStreams] = useState(false);
+  const [actionStream, setActionStream] = useState<LiveSession | null>(null);
+  const [deletingStreamId, setDeletingStreamId] = useState<string | null>(null);
+
+  const pagerRef = useRef<ScrollView>(null);
+  const scrollX = useRef(new Animated.Value(0)).current;
+  const tabIndicatorX = scrollX.interpolate({
+    inputRange: [0, SCREEN_WIDTH],
+    outputRange: [0, SCREEN_WIDTH / 2],
+    extrapolate: "clamp",
+  });
 
 
 
@@ -132,6 +144,16 @@ export default function ProfileScreen() {
     setRefreshing(true);
     await Promise.all([fetchProducts(), fetchFollowCounts(), fetchStreams()]);
     setRefreshing(false);
+  }
+
+  function scrollToPage(index: number) {
+    pagerRef.current?.scrollTo({ x: index * SCREEN_WIDTH, animated: true });
+    setActiveTab(index === 0 ? "streams" : "products");
+  }
+
+  function handlePageChange(e: any) {
+    const page = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+    setActiveTab(page === 0 ? "streams" : "products");
   }
 
 
@@ -241,6 +263,25 @@ export default function ProfileScreen() {
     }
   }
 
+  async function handleDeleteStream(id: string) {
+    try {
+      setDeletingStreamId(id);
+      await apiClient(`/sessions/${id}`, { method: "DELETE" });
+      setStreams((prev) => prev.filter((s) => s.id !== id));
+    } catch (err: any) {
+      Alert.alert("Error", err.message);
+    } finally {
+      setDeletingStreamId(null);
+    }
+  }
+
+  async function handleDeleteSelectedStream() {
+    if (!actionStream) return;
+    const id = actionStream.id;
+    setActionStream(null);
+    await handleDeleteStream(id);
+  }
+
   async function handleDeleteProduct(id: string) {
     try {
       setDeletingId(id);
@@ -300,28 +341,6 @@ export default function ProfileScreen() {
             <Text style={styles.statLabel}>Following</Text>
           </View>
         </View>
-
-        {/* Segmented Control */}
-        <View style={styles.segmentedWrapper}>
-          <View style={styles.segmentedControl}>
-            <TouchableOpacity
-              style={[styles.segmentTab, activeTab === "streams" && styles.segmentTabActive]}
-              onPress={() => setActiveTab("streams")}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="videocam-outline" size={16} color={activeTab === "streams" ? theme.text : theme.textMuted} style={styles.segmentIcon} />
-              <Text style={[styles.segmentText, activeTab === "streams" && styles.segmentTextActive]}>Streams</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.segmentTab, activeTab === "products" && styles.segmentTabActive]}
-              onPress={() => setActiveTab("products")}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="cube-outline" size={16} color={activeTab === "products" ? theme.text : theme.textMuted} style={styles.segmentIcon} />
-              <Text style={[styles.segmentText, activeTab === "products" && styles.segmentTextActive]}>Products</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
       </View>
     );
   }
@@ -362,8 +381,9 @@ export default function ProfileScreen() {
   function renderStreamCard({ item }: { item: LiveSession }) {
     return (
       <TouchableOpacity
-        style={styles.streamCard}
+        style={[styles.streamCard, deletingStreamId === item.id && { opacity: 0.5 }]}
         onPress={() => router.push(`/viewer/${item.id}`)}
+        onLongPress={() => setActionStream(item)}
         activeOpacity={0.7}
       >
         <View style={styles.streamThumbnail}>
@@ -416,14 +436,18 @@ export default function ProfileScreen() {
         options={{
           headerTitle: "",
           headerLeft: () => (
-            <Text style={{ fontSize: 24, fontWeight: "800", marginLeft: 16, color: theme.text }}>
-              Profile
-            </Text>
+            <TouchableOpacity style={[styles.navAvatar, { marginLeft: 16 }]} onPress={() => setShowMenu(true)}>
+              {user?.avatarUrl ? (
+                <Image source={{ uri: user.avatarUrl }} style={{ width: 34, height: 34, borderRadius: 17 }} />
+              ) : (
+                <Text style={styles.navAvatarText}>{user?.name?.charAt(0).toUpperCase() || "?"}</Text>
+              )}
+            </TouchableOpacity>
           ),
           headerRight: () => (
             <View style={styles.headerRightRow}>
               <TouchableOpacity
-                style={styles.headerPill}
+                style={[styles.headerPill, { marginRight: 16 }]}
                 onPress={() => {
                   if (activeTab === "products") {
                     openCreateProductModal();
@@ -434,13 +458,6 @@ export default function ProfileScreen() {
               >
                 <Ionicons name="add" size={18} color={theme.textOnAccent} />
                 <Text style={styles.headerPillText}>{activeTab === "products" ? "Product" : "Create"}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.navAvatar} onPress={() => setShowMenu(true)}>
-                {user?.avatarUrl ? (
-                  <Image source={{ uri: user.avatarUrl }} style={{ width: 34, height: 34, borderRadius: 17 }} />
-                ) : (
-                  <Text style={styles.navAvatarText}>{user?.name?.charAt(0).toUpperCase() || "?"}</Text>
-                )}
               </TouchableOpacity>
             </View>
           ),
@@ -518,6 +535,48 @@ export default function ProfileScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
+      {/* Stream Action Modal (Delete) */}
+      <Modal visible={Boolean(actionStream)} transparent animationType="fade" onRequestClose={() => setActionStream(null)}>
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setActionStream(null)} />
+          <View style={styles.menuSheet}>
+            <View style={styles.menuHandle} />
+            {actionStream && (
+              <View style={styles.actionSummary}>
+                <View style={{ width: "100%", height: 180, borderRadius: 12, backgroundColor: theme.surfaceAlt, overflow: "hidden", marginBottom: 16 }}>
+                  {actionStream.thumbnailUrl ? (
+                    <Image source={{ uri: actionStream.thumbnailUrl }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
+                  ) : (
+                    <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+                      <Ionicons name="videocam-outline" size={48} color={theme.textMuted} />
+                    </View>
+                  )}
+                </View>
+                <Text style={[styles.actionName, { fontSize: 18 }]} numberOfLines={2}>{actionStream.title}</Text>
+                <Text style={{ fontSize: 13, color: theme.textMuted, marginTop: 4 }}>
+                  {actionStream.endedAt ? new Date(actionStream.endedAt).toLocaleDateString() : "Recently Recorded"}
+                </Text>
+              </View>
+            )}
+            <View style={styles.actionButtons}>
+              <TouchableOpacity
+                style={[styles.actionPrimaryBtn, styles.actionDeleteBtn, actionStream && deletingStreamId === actionStream.id && { opacity: 0.6 }]}
+                onPress={() => void handleDeleteSelectedStream()}
+                disabled={Boolean(actionStream && deletingStreamId === actionStream.id)}
+              >
+                <Ionicons name="trash-outline" size={18} color="#fecaca" />
+                <Text style={styles.actionDeleteText}>
+                  {actionStream && deletingStreamId === actionStream.id ? "Deleting..." : "Delete Stream"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity style={styles.actionCancelBtn} onPress={() => setActionStream(null)}>
+              <Text style={styles.cancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       {/* Product Action Modal (Edit / Delete) */}
       <Modal visible={Boolean(actionProduct)} transparent animationType="fade" onRequestClose={() => setActionProduct(null)}>
         <View style={styles.modalOverlay}>
@@ -580,33 +639,59 @@ export default function ProfileScreen() {
   return (
     <View style={styles.container}>
       {modals}
-      {activeTab === "products" ? (
-        <FlatList
-          key="products-list-2-cols"
-          data={products}
-          keyExtractor={(item) => item.id}
-          renderItem={renderProductCard}
-          numColumns={2}
-          ListHeaderComponent={renderProfileHeader}
-          contentContainerStyle={styles.gridList}
-          columnWrapperStyle={styles.gridRow}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.accent} />}
-          ListEmptyComponent={renderProductsEmpty}
-        />
-      ) : (
-        <FlatList
-          key="streams-list-2-col"
-          data={streams}
-          keyExtractor={(item) => item.id}
-          renderItem={renderStreamCard}
-          numColumns={2}
-          ListHeaderComponent={renderProfileHeader}
-          contentContainerStyle={styles.gridList}
-          columnWrapperStyle={styles.gridRow}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.accent} />}
-          ListEmptyComponent={fetchingStreams ? <ActivityIndicator style={{ marginTop: 40 }} /> : renderStreamsEmpty}
-        />
-      )}
+      {renderProfileHeader()}
+
+      {/* Segmented Control */}
+      <View style={styles.segmentedWrapper}>
+        <View style={styles.segmentedControl}>
+          <TouchableOpacity style={styles.segmentTab} onPress={() => scrollToPage(0)} activeOpacity={0.8}>
+            <Ionicons name="videocam-outline" size={15} color={activeTab === "streams" ? theme.text : theme.textMuted} style={styles.segmentIcon} />
+            <Text style={[styles.segmentText, activeTab === "streams" && styles.segmentTextActive]}>Streams</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.segmentTab} onPress={() => scrollToPage(1)} activeOpacity={0.8}>
+            <Ionicons name="cube-outline" size={15} color={activeTab === "products" ? theme.text : theme.textMuted} style={styles.segmentIcon} />
+            <Text style={[styles.segmentText, activeTab === "products" && styles.segmentTextActive]}>Products</Text>
+          </TouchableOpacity>
+        </View>
+        <Animated.View style={[styles.tabIndicator, { transform: [{ translateX: tabIndicatorX }] }]} />
+        <View style={styles.tabDivider} />
+      </View>
+
+      <Animated.ScrollView
+        ref={pagerRef as any}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        scrollEventThrottle={16}
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: true })}
+        onMomentumScrollEnd={handlePageChange}
+        style={{ flex: 1 }}
+      >
+        <View style={{ width: SCREEN_WIDTH }}>
+          <FlatList
+            data={streams}
+            keyExtractor={(item) => item.id}
+            renderItem={renderStreamCard}
+            numColumns={2}
+            contentContainerStyle={styles.gridList}
+            columnWrapperStyle={styles.gridRow}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.accent} />}
+            ListEmptyComponent={fetchingStreams ? <ActivityIndicator style={{ marginTop: 40 }} /> : renderStreamsEmpty}
+          />
+        </View>
+        <View style={{ width: SCREEN_WIDTH }}>
+          <FlatList
+            data={products}
+            keyExtractor={(item) => item.id}
+            renderItem={renderProductCard}
+            numColumns={2}
+            contentContainerStyle={styles.gridList}
+            columnWrapperStyle={styles.gridRow}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.accent} />}
+            ListEmptyComponent={renderProductsEmpty}
+          />
+        </View>
+      </Animated.ScrollView>
     </View>
   );
 }
@@ -646,20 +731,19 @@ const createStyles = (theme: AppTheme) =>
     statDivider: { width: 1, height: 28, backgroundColor: theme.border },
 
     // Segmented Control
-    segmentedWrapper: { width: "100%", paddingHorizontal: 16, marginTop: 24, marginBottom: 4 },
-    segmentedControl: { flexDirection: "row", backgroundColor: theme.surfaceAlt, borderRadius: 12, padding: 3 },
-    segmentTab: {
-      flex: 1, flexDirection: "row", paddingVertical: 9, borderRadius: 10,
-      alignItems: "center", justifyContent: "center",
+    segmentedWrapper: { width: "100%", marginTop: 20 },
+    segmentedControl: { flexDirection: "row" },
+    segmentTab: { flex: 1, flexDirection: "row", paddingVertical: 13, alignItems: "center", justifyContent: "center" },
+    segmentTabActive: {},
+    tabIndicator: {
+      height: 2.5,
+      width: SCREEN_WIDTH / 2,
+      backgroundColor: theme.accent,
+      borderRadius: 1.5,
     },
-    segmentTabActive: {
-      backgroundColor: theme.surface,
-      ...(Platform.OS === "ios"
-        ? { shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 3 }
-        : { elevation: 2 }),
-    },
+    tabDivider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.border, marginTop: -StyleSheet.hairlineWidth },
     segmentIcon: { marginRight: 6 },
-    segmentText: { fontSize: 14, fontWeight: "600", color: theme.textMuted },
+    segmentText: { fontSize: 15, fontWeight: "600", color: theme.textMuted },
     segmentTextActive: { color: theme.text, fontWeight: "700" },
 
     // Modal overlay

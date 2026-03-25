@@ -41,6 +41,17 @@ export const checkFollowing = catchAsync(async (req: Request, res: Response) => 
   sendSuccess(res, result);
 });
 
+export const searchUsers = catchAsync(async (req: Request, res: Response) => {
+  const q = String(req.query.q || "");
+  const result = await UserService.searchByName(q);
+  sendSuccess(res, result);
+});
+
+export const getUserPublicProfile = catchAsync(async (req: Request, res: Response) => {
+  const result = await UserService.getPublicProfile(req.params.id, req.user?.userId);
+  sendSuccess(res, result);
+});
+
 export const updateProfile = catchAsync(async (req: Request, res: Response) => {
   const { name, bio, phone } = req.body;
   const result = await UserService.updateProfile(req.user!.userId, { name, bio, phone });

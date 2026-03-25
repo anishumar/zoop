@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { randomUUID } from "crypto";
 import { ApiError } from "../utils/ApiError";
@@ -177,6 +177,15 @@ export class StorageService {
 
     await this.getClient().send(command);
     return this.buildPublicUrl(key);
+  }
+
+  /**
+   * Deletes an object from R2 by its key.
+   */
+  static async deleteObject(key: string): Promise<void> {
+    ensureStorageConfig();
+    const command = new DeleteObjectCommand({ Bucket: bucket!, Key: key });
+    await this.getClient().send(command);
   }
 
   /* ── Convenience wrappers (backward-compatible) ─────────── */

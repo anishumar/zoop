@@ -110,3 +110,8 @@ export const getUserArchivedSessions = catchAsync(async (req: Request, res: Resp
   const result = await SessionService.listUserArchived(hostId, page, limit);
   sendSuccess(res, result);
 });
+
+export const deleteSession = catchAsync(async (req: Request, res: Response) => {
+  await SessionService.deleteSession(String(req.params.id), req.user!.userId);
+  sendSuccess(res, null, "Session deleted");
+});

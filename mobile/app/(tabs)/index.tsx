@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -13,7 +13,12 @@ import {
   KeyboardAvoidingView,
   ActivityIndicator,
   Image,
+  Animated,
+  Dimensions,
+  ScrollView,
 } from "react-native";
+
+const SCREEN_WIDTH = Dimensions.get("window").width;
 import { useRouter, useFocusEffect, Stack } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { apiClient } from "../../src/api/client";
@@ -49,6 +54,20 @@ export default function HomeScreen() {
   const [followedIds, setFollowedIds] = useState<Set<string>>(new Set());
   const [followingId, setFollowingId] = useState<string | null>(null);
 
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<{ id: string; name: string; avatarUrl?: string | null; bio?: string | null }[]>([]);
+  const [searching, setSearching] = useState(false);
+  const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const pagerRef = useRef<ScrollView>(null);
+  const scrollX = useRef(new Animated.Value(0)).current;
+  const tabIndicatorX = scrollX.interpolate({
+    inputRange: [0, SCREEN_WIDTH],
+    outputRange: [0, SCREEN_WIDTH / 2],
+    extrapolate: "clamp",
+  });
+
   const fetchSessions = useCallback(async () => {
     try {
       const res = await apiClient<ApiResponse<SessionListResponse>>("/sessions/live");
@@ -81,8 +100,6 @@ export default function HomeScreen() {
     setRefreshing(false);
   }
 
-  const displayedSessions = activeTab === "live" ? sessions : followingSessions;
-
   async function fetchFollowing() {
     try {
       const res = await apiClient<ApiResponse<{ users: { id: string }[] }>>("/users/following");
@@ -109,6 +126,49 @@ export default function HomeScreen() {
     } finally {
       setFollowingId(null);
     }
+  }
+
+  function handleSearchChange(text: string) {
+    setSearchQuery(text);
+    if (searchTimeout.current) clearTimeout(searchTimeout.current);
+    if (!text.trim()) {
+      setSearchResults([]);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    searchTimeout.current = setTimeout(async () => {
+      try {
+        const res = await apiClient<ApiResponse<{ users: { id: string; name: string; avatarUrl?: string | null; bio?: string | null }[] }>>(`/users/search?q=${encodeURIComponent(text.trim())}`);
+        setSearchResults(res.data.users);
+      } catch {
+        setSearchResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 300);
+  }
+
+  function clearSearch() {
+    setSearchQuery("");
+    setSearchResults([]);
+    setSearching(false);
+    if (searchTimeout.current) clearTimeout(searchTimeout.current);
+  }
+
+  function closeSearch() {
+    clearSearch();
+    setShowSearch(false);
+  }
+
+  function scrollToPage(index: number) {
+    pagerRef.current?.scrollTo({ x: index * SCREEN_WIDTH, animated: true });
+    setActiveTab(index === 0 ? "live" : "following");
+  }
+
+  function handlePageChange(e: any) {
+    const page = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+    setActiveTab(page === 0 ? "live" : "following");
   }
 
   async function handleGoLive() {
@@ -217,71 +277,139 @@ export default function HomeScreen() {
           headerRight: () => (
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
               <TouchableOpacity
-                style={styles.headerPill}
+                style={styles.headerIconBtn}
+                onPress={() => setShowSearch(true)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="search-outline" size={22} color={theme.text} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.headerPill, { marginRight: 16 }]}
                 onPress={() => setShowCreateMenu(true)}
               >
                 <Ionicons name="add" size={18} color={theme.textOnAccent} />
                 <Text style={styles.headerPillText}>Create</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.navAvatar, { marginRight: 16 }]}
-                onPress={() => setShowMenu(true)}
-              >
-                {user?.avatarUrl ? (
-                  <Image source={{ uri: user.avatarUrl }} style={{ width: 34, height: 34, borderRadius: 17 }} />
-                ) : (
-                  <Text style={styles.navAvatarText}>{user?.name?.charAt(0).toUpperCase() || "?"}</Text>
-                )}
               </TouchableOpacity>
             </View>
           ),
         }}
       />
 
+      {/* Search Modal */}
+      <Modal visible={showSearch} animationType="fade" transparent onRequestClose={closeSearch}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
+          <TouchableOpacity style={styles.searchOverlay} activeOpacity={1} onPress={closeSearch} />
+          <View style={styles.searchSheet}>
+            <View style={styles.searchBar}>
+              <Ionicons name="search-outline" size={18} color={theme.textMuted} style={styles.searchIcon} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search users..."
+                placeholderTextColor={theme.textMuted}
+                value={searchQuery}
+                onChangeText={handleSearchChange}
+                returnKeyType="search"
+                autoCorrect={false}
+                autoCapitalize="none"
+                autoFocus
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={clearSearch} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close-circle" size={18} color={theme.textMuted} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {searching ? (
+              <ActivityIndicator style={{ paddingVertical: 24 }} color={theme.accent} />
+            ) : searchQuery.length > 0 && searchResults.length === 0 ? (
+              <Text style={styles.searchEmpty}>No users found</Text>
+            ) : (
+              searchResults.map((u) => (
+                <TouchableOpacity
+                  key={u.id}
+                  style={styles.searchResultRow}
+                  onPress={() => { closeSearch(); router.push(`/user/${u.id}`); }}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.searchResultAvatar}>
+                    {u.avatarUrl ? (
+                      <Image source={{ uri: u.avatarUrl }} style={styles.searchResultAvatarImg} />
+                    ) : (
+                      <Text style={styles.searchResultAvatarText}>{u.name.charAt(0).toUpperCase()}</Text>
+                    )}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.searchResultName}>{u.name}</Text>
+                    {u.bio ? <Text style={styles.searchResultBio} numberOfLines={1}>{u.bio}</Text> : null}
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={theme.textMuted} />
+                </TouchableOpacity>
+              ))
+            )}
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       <View style={styles.segmentedWrapper}>
         <View style={styles.segmentedControl}>
-          <TouchableOpacity
-            style={[styles.segmentTab, activeTab === "live" && styles.segmentTabActive]}
-            onPress={() => setActiveTab("live")}
-            activeOpacity={0.8}
-          >
+          <TouchableOpacity style={styles.segmentTab} onPress={() => scrollToPage(0)} activeOpacity={0.8}>
             <Text style={[styles.segmentText, activeTab === "live" && styles.segmentTextActive]}>Live</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.segmentTab, activeTab === "following" && styles.segmentTabActive]}
-            onPress={() => setActiveTab("following")}
-            activeOpacity={0.8}
-          >
+          <TouchableOpacity style={styles.segmentTab} onPress={() => scrollToPage(1)} activeOpacity={0.8}>
             <Text style={[styles.segmentText, activeTab === "following" && styles.segmentTextActive]}>Following</Text>
           </TouchableOpacity>
         </View>
+        <Animated.View style={[styles.tabIndicator, { transform: [{ translateX: tabIndicatorX }] }]} />
+        <View style={styles.tabDivider} />
       </View>
 
-      <FlatList
-        data={displayedSessions}
-        keyExtractor={(item) => item.id}
-        renderItem={renderSession}
-        contentContainerStyle={styles.list}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.accent} />}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Ionicons
-              name={activeTab === "following" ? "people-outline" : "radio-outline"}
-              size={56}
-              color={theme.textMuted}
-              style={styles.emptyEmoji}
-            />
-            <Text style={styles.emptyTitle}>
-              {activeTab === "following" ? "No live from people you follow" : "No live sessions"}
-            </Text>
-            <Text style={styles.emptySubtitle}>
-              {activeTab === "following"
-                ? "Follow creators to see their streams here"
-                : "Be the first to go live!"}
-            </Text>
-          </View>
-        }
-      />
+      <Animated.ScrollView
+        ref={pagerRef as any}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        scrollEventThrottle={16}
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: true })}
+        onMomentumScrollEnd={handlePageChange}
+        style={{ flex: 1 }}
+      >
+        <View style={{ width: SCREEN_WIDTH }}>
+          <FlatList
+            data={sessions}
+            keyExtractor={(item) => item.id}
+            renderItem={renderSession}
+            contentContainerStyle={styles.list}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.accent} />}
+            ListEmptyComponent={
+              <View style={styles.empty}>
+                <Ionicons name="radio-outline" size={56} color={theme.textMuted} style={styles.emptyEmoji} />
+                <Text style={styles.emptyTitle}>No live sessions</Text>
+                <Text style={styles.emptySubtitle}>Be the first to go live!</Text>
+              </View>
+            }
+          />
+        </View>
+        <View style={{ width: SCREEN_WIDTH }}>
+          <FlatList
+            data={followingSessions}
+            keyExtractor={(item) => item.id}
+            renderItem={renderSession}
+            contentContainerStyle={styles.list}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.accent} />}
+            ListEmptyComponent={
+              <View style={styles.empty}>
+                <Ionicons name="people-outline" size={56} color={theme.textMuted} style={styles.emptyEmoji} />
+                <Text style={styles.emptyTitle}>No live from people you follow</Text>
+                <Text style={styles.emptySubtitle}>Follow creators to see their streams here</Text>
+              </View>
+            }
+          />
+        </View>
+      </Animated.ScrollView>
 
       <Modal visible={showGoLive} transparent animationType="fade" onRequestClose={() => setShowGoLive(false)}>
         <KeyboardAvoidingView
@@ -342,39 +470,19 @@ const createStyles = (theme: AppTheme) =>
     justifyContent: "center", alignItems: "center",
   },
   navAvatarText: { fontSize: 15, fontWeight: "800", color: theme.textOnAccent },
-  segmentedWrapper: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 4,
+  segmentedWrapper: { paddingTop: 4 },
+  segmentedControl: { flexDirection: "row" },
+  segmentTab: { flex: 1, paddingVertical: 13, alignItems: "center", justifyContent: "center" },
+  segmentTabActive: {},
+  tabIndicator: {
+    height: 2.5,
+    width: SCREEN_WIDTH / 2,
+    backgroundColor: theme.accent,
+    borderRadius: 1.5,
   },
-  segmentedControl: {
-    flexDirection: "row",
-    backgroundColor: theme.surfaceAlt,
-    borderRadius: 12,
-    padding: 3,
-  },
-  segmentTab: {
-    flex: 1,
-    paddingVertical: 9,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  segmentTabActive: {
-    backgroundColor: theme.surface,
-    ...(Platform.OS === "ios"
-      ? { shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 3 }
-      : { elevation: 2 }),
-  },
-  segmentText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: theme.textMuted,
-  },
-  segmentTextActive: {
-    color: theme.text,
-    fontWeight: "700",
-  },
+  tabDivider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.border, marginTop: -StyleSheet.hairlineWidth },
+  segmentText: { fontSize: 15, fontWeight: "600", color: theme.textMuted },
+  segmentTextActive: { color: theme.text, fontWeight: "700" },
   list: { padding: 16, paddingBottom: 100 },
   sessionCard: {
     backgroundColor: theme.surface,
@@ -497,4 +605,50 @@ const createStyles = (theme: AppTheme) =>
     alignItems: "center",
   },
   modalConfirmText: { color: theme.textOnAccent, fontWeight: "700", fontSize: 16 },
+
+  // Search
+  headerIconBtn: { padding: 4 },
+  searchOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.5)" },
+  searchSheet: {
+    backgroundColor: theme.surface,
+    borderRadius: 16,
+    marginHorizontal: 12,
+    marginTop: 100,
+    overflow: "hidden",
+    ...(Platform.OS === "ios"
+      ? { shadowColor: "#000", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.2, shadowRadius: 16 }
+      : { elevation: 8 }),
+  },
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
+  },
+  searchIcon: { marginRight: 8 },
+  searchInput: { flex: 1, fontSize: 15, color: theme.text },
+  searchEmpty: { textAlign: "center", color: theme.textMuted, paddingVertical: 24, fontSize: 14 },
+  searchResultRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 14,
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
+  },
+  searchResultAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: theme.accent,
+    justifyContent: "center",
+    alignItems: "center",
+    overflow: "hidden",
+  },
+  searchResultAvatarImg: { width: 40, height: 40, borderRadius: 20 },
+  searchResultAvatarText: { fontSize: 16, fontWeight: "800", color: theme.textOnAccent },
+  searchResultName: { fontSize: 15, fontWeight: "600", color: theme.text },
+  searchResultBio: { fontSize: 13, color: theme.textMuted, marginTop: 2 },
 });

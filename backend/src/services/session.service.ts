@@ -1,6 +1,7 @@
 import prisma from "../prisma/client";
 import { ApiError } from "../utils/ApiError";
 import { LiveKitService } from "./livekit.service";
+import { StorageService } from "./storage.service";
 
 export class SessionService {
   static async create(hostId: string, data: { title?: string; streamType?: string }) {
@@ -71,6 +72,21 @@ export class SessionService {
       where: { id: sessionId },
       data: { isLive: false, endedAt: new Date() },
     });
+  }
+
+  static async deleteSession(sessionId: string, hostId: string) {
+    const session = await prisma.liveSession.findUnique({ where: { id: sessionId } });
+    if (!session) throw new ApiError(404, "Session not found");
+    if (session.hostId !== hostId) throw new ApiError(403, "Only the host can delete this session");
+    if (session.isLive) throw new ApiError(400, "Cannot delete an active live session");
+
+    // Delete recording and thumbnail from R2 (best-effort)
+    await Promise.allSettled([
+      StorageService.deleteObject(`recordings/${sessionId}.mp4`),
+      StorageService.deleteObject(`thumbnails/${hostId}/${sessionId}.jpg`),
+    ]);
+
+    await prisma.liveSession.delete({ where: { id: sessionId } });
   }
 
   static async listLive(page = 1, limit = 20) {

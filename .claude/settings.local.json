@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -E \"\\\\.\\(tsx?|jsx?\\)$\")",
+      "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")",
+      "Bash(wc -l /Users/anishumar/Desktop/zoop/mobile/app/\\\\\\(tabs\\\\\\)/profile.tsx)",
+      "Bash(head -300 /Users/anishumar/Desktop/zoop/mobile/app/\\\\\\(tabs\\\\\\)/profile.tsx)",
+      "Bash(tail -200 /Users/anishumar/Desktop/zoop/mobile/app/\\\\\\(tabs\\\\\\)/profile.tsx)"
+    ]
+  }
+}

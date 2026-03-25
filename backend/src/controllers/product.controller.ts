@@ -61,6 +61,13 @@ export const getMyProducts = catchAsync(async (req: Request, res: Response) => {
   sendSuccess(res, result);
 });
 
+export const getUserProducts = catchAsync(async (req: Request, res: Response) => {
+  const page = parseInt(String(req.query.page)) || 1;
+  const limit = parseInt(String(req.query.limit)) || 20;
+  const result = await ProductService.listByOwner(String(req.params.userId), page, limit);
+  sendSuccess(res, result);
+});
+
 export const getProduct = catchAsync(async (req: Request, res: Response) => {
   const product = await ProductService.getById(String(req.params.id));
   sendSuccess(res, product);
