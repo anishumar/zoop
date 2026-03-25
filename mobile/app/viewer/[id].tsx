@@ -23,6 +23,7 @@ import { getLiveKitToken } from "../../src/api/livekit";
 import { LiveSession, Message, ApiResponse } from "../../src/types";
 import { AppTheme, useAppTheme } from "../../src/theme";
 import { usePlayer } from "../../src/contexts/PlayerContext";
+import { useLiveTimer } from "../../src/hooks/useLiveTimer";
 import ImageWithFallback from "../../src/components/ImageWithFallback";
 import VideoPlayer from "../../src/components/VideoPlayer";
 
@@ -40,6 +41,7 @@ export default function ViewerScreen() {
   const [session, setSession] = useState<LiveSession | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [viewerCount, setViewerCount] = useState(0);
+  const streamDuration = useLiveTimer(session?.startedAt);
   const [questionText, setQuestionText] = useState("");
   const [showProducts, setShowProducts] = useState(false);
   const [floatingReactions, setFloatingReactions] = useState<{ id: number; emoji: string }[]>([]);
@@ -312,7 +314,7 @@ export default function ViewerScreen() {
             {streamConnected && (
               <View style={styles.liveBadge}>
                 <View style={styles.liveDot} />
-                <Text style={styles.liveLabel}>LIVE</Text>
+                <Text style={styles.liveLabel}>LIVE {streamDuration}</Text>
               </View>
             )}
             <View style={styles.viewerBadge}>
@@ -548,6 +550,8 @@ const createStyles = (theme: AppTheme) =>
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 20,
+    minWidth: 70,
+    justifyContent: "center",
   },
   liveDot: {
     width: 8,
@@ -560,6 +564,7 @@ const createStyles = (theme: AppTheme) =>
     color: "#fff",
     fontWeight: "800",
     fontSize: 12,
+    fontVariant: ["tabular-nums"],
   },
   viewerBadge: {
     flexDirection: "row",

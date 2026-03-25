@@ -15,9 +15,6 @@ import {
   isTrackReference,
 } from "@livekit/react-native";
 import { Track } from "livekit-client";
-import { registerGlobals } from "@livekit/react-native";
-
-registerGlobals();
 
 interface LiveKitRoomProps {
   token: string;

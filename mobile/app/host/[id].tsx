@@ -26,6 +26,7 @@ import ImageWithFallback from "../../src/components/ImageWithFallback";
 import { LiveSession, Product, Message, ApiResponse } from "../../src/types";
 import { AppTheme, useAppTheme } from "../../src/theme";
 import { usePlayer } from "../../src/contexts/PlayerContext";
+import { useLiveTimer } from "../../src/hooks/useLiveTimer";
 
 interface ProductListResponse {
   products: Product[];
@@ -61,6 +62,7 @@ export default function HostScreen() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [viewerCount, setViewerCount] = useState(0);
   const [reactionCount, setReactionCount] = useState(0);
+  const streamDuration = useLiveTimer(session?.startedAt);
   const [endingSession, setEndingSession] = useState(false);
   const [aiReplyLoadingId, setAiReplyLoadingId] = useState<string | null>(null);
   const [aiInsightsLoading, setAiInsightsLoading] = useState(false);
@@ -372,6 +374,10 @@ export default function HostScreen() {
             <Text style={[styles.backText, isImmersiveMode && styles.textShadow]}>Back</Text>
           </TouchableOpacity>
           <View style={styles.topBarRight}>
+            <View style={styles.liveBadge}>
+              <View style={styles.liveDot} />
+              <Text style={styles.liveLabel}>{streamDuration}</Text>
+            </View>
             <TouchableOpacity
               style={[styles.headerIconButton, isImmersiveMode && styles.immersiveHeaderButton, { borderRadius: 19, width: 38, height: 38, alignItems: 'center', justifyContent: 'center' }]}
               onPress={() => setIsImmersiveMode((v) => !v)}
@@ -449,6 +455,10 @@ export default function HostScreen() {
             <View style={styles.statItem}>
               <Text style={styles.statValue}>{messages.filter((m) => m.type === "question").length}</Text>
               <Text style={styles.statLabel}>Questions</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{streamDuration}</Text>
+              <Text style={styles.statLabel}>Duration</Text>
             </View>
           </View>
         )}
@@ -762,7 +772,36 @@ const createStyles = (theme: AppTheme) =>
     backgroundColor: theme.accent,
     borderColor: theme.accent,
   },
-  endButton: { backgroundColor: "#ef4444", borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8 },
+  liveBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 2,
+    minWidth: 45,
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#ef4444",
+    marginRight: 6,
+  },
+  liveLabel: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 11,
+    fontVariant: ["tabular-nums"],
+    textShadowColor: "rgba(0, 0, 0, 0.75)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  endButton: {
+    backgroundColor: "#ef4444",
+    borderRadius: 8,
+    minWidth: 80,
+    paddingVertical: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   endButtonText: { color: "#fff", fontWeight: "700", fontSize: 14 },
   bottomSheetOverlay: {
     flex: 1,
@@ -830,7 +869,7 @@ const createStyles = (theme: AppTheme) =>
     marginTop: 12,
   },
   statItem: { alignItems: "center" },
-  statValue: { fontSize: 22, fontWeight: "800", color: theme.text },
+  statValue: { fontSize: 22, fontWeight: "800", color: theme.text, fontVariant: ["tabular-nums"] },
   statLabel: { fontSize: 12, color: theme.textMuted, marginTop: 2 },
 
   sectionTitle: { fontSize: 18, fontWeight: "700", color: theme.text, marginTop: 24, marginBottom: 12, marginHorizontal: 16 },

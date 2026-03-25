@@ -72,7 +72,13 @@ export class LiveKitService {
       const info = await egressClient.startRoomCompositeEgress(
         roomName,
         output as any,
-        { layout: "grid" }
+        { 
+          layout: "grid",
+          encodingOptions: {
+            width: 720,
+            height: 1280,
+          } as any
+        }
       );
       return info.egressId;
     } catch (err: any) {

@@ -65,7 +65,7 @@ export default function VideoPlayer({
         <Video
           source={{ uri: streamUrl }}
           style={StyleSheet.absoluteFill}
-          resizeMode={ResizeMode.COVER}
+          resizeMode={ResizeMode.CONTAIN}
           shouldPlay={true}
           isLooping={true}
           useNativeControls={!isMini}
