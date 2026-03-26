@@ -12,8 +12,10 @@
       "backgroundColor": "#0f172a"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.anonymous.zooplive"
     },
+
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",

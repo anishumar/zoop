@@ -433,8 +433,8 @@ export default function HomeScreen() {
             <Text style={styles.followingCaptionName}>{item.host?.name}</Text>{" "}
             <Text style={styles.followingCaptionText}>{item.title}</Text>
           </Text>
-          {!isLive && <Text style={styles.followingTimeFooter}>{timeText}</Text>}
         </View>
+
       </View>
     );
   }
