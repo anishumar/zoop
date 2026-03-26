@@ -11,6 +11,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Image,
+  ScrollView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -174,7 +175,7 @@ export default function ProfileMenuBottomSheet({ visible, onClose }: ProfileMenu
             <View style={styles.menuHandle} />
 
             {view === "menu" ? (
-              <View>
+              <ScrollView showsVerticalScrollIndicator={false}>
                 <View style={styles.menuHeader}>
                   <View style={styles.menuAvatar}>
                     {user?.avatarUrl ? (
@@ -199,7 +200,7 @@ export default function ProfileMenuBottomSheet({ visible, onClose }: ProfileMenu
                     </TouchableOpacity>
                   </View>
                 ))}
-              </View>
+              </ScrollView>
             ) : view === "edit" ? (
               <View style={{ paddingBottom: 10 }}>
                 <View style={[styles.menuHeader, { paddingHorizontal: 16, paddingBottom: 20 }]}>
@@ -230,7 +231,7 @@ export default function ProfileMenuBottomSheet({ visible, onClose }: ProfileMenu
                 </View>
               </View>
             ) : (
-              <View style={{ flex: 1, minHeight: 600 }}>
+              <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
                 <View style={[styles.menuHeader, { paddingHorizontal: 16, paddingBottom: 10 }]}>
                   <TouchableOpacity onPress={handleBack} style={{ padding: 4 }}>
                     <Ionicons name="arrow-back" size={24} color={theme.text} />
@@ -249,7 +250,7 @@ export default function ProfileMenuBottomSheet({ visible, onClose }: ProfileMenu
                     <Text style={{ fontSize: 14, color: theme.textMuted, marginTop: 4, textAlign: "center" }}>Products you ♥️ during streams will appear here</Text>
                   </View>
                 ) : (
-                  <View style={{ flex: 1, paddingHorizontal: 20, paddingTop: 10 }}>
+                  <View style={{ flex: 1, paddingHorizontal: 20, paddingTop: 10, paddingBottom: 40 }}>
                     <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" }}>
                       {wishlistProducts.map(item => (
                         <View key={item.id} style={{ width: "48%", marginBottom: 16, backgroundColor: theme.surfaceAlt, borderRadius: 12, overflow: "hidden" }}>
@@ -271,7 +272,7 @@ export default function ProfileMenuBottomSheet({ visible, onClose }: ProfileMenu
                     </View>
                   </View>
                 )}
-              </View>
+              </ScrollView>
             )}
           </View>
         </KeyboardAvoidingView>

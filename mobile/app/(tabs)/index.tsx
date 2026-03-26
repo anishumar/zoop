@@ -16,6 +16,7 @@ import {
   Animated,
   Dimensions,
   ScrollView,
+  useWindowDimensions,
 } from "react-native";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
@@ -58,6 +59,12 @@ interface SessionListResponse {
 type TabKey = "live" | "following";
 
 export default function HomeScreen() {
+  const { width: windowWidth } = useWindowDimensions();
+  const isWide = windowWidth > 600;
+  const numColumns = isWide ? 2 : 1;
+  const contentWidth = isWide ? Math.min(windowWidth, 1200) : windowWidth;
+  const followingMaxWidth = 600;
+
   const [activeTab, setActiveTab] = useState<TabKey>("live");
   const [sessions, setSessions] = useState<LiveSession[]>([]);
   const [followingSessions, setFollowingSessions] = useState<LiveSession[]>([]);
@@ -88,8 +95,8 @@ export default function HomeScreen() {
   const pagerRef = useRef<ScrollView>(null);
   const scrollX = useRef(new Animated.Value(0)).current;
   const tabIndicatorX = scrollX.interpolate({
-    inputRange: [0, SCREEN_WIDTH],
-    outputRange: [0, SCREEN_WIDTH / 2],
+    inputRange: [0, windowWidth],
+    outputRange: [0, windowWidth / 2],
     extrapolate: "clamp",
   });
 
@@ -249,17 +256,27 @@ export default function HomeScreen() {
   }
 
   function closeSearch() {
-    clearSearch();
     setShowSearch(false);
+    // Delay clearing results so they don't vanish during modal fade-out
+    setTimeout(() => {
+      clearSearch();
+    }, 400);
   }
 
   function scrollToPage(index: number) {
-    pagerRef.current?.scrollTo({ x: index * SCREEN_WIDTH, animated: true });
+    if (Platform.OS === "web") {
+      Animated.spring(scrollX, {
+        toValue: index * windowWidth,
+        useNativeDriver: false,
+      }).start();
+    } else {
+      pagerRef.current?.scrollTo({ x: index * windowWidth, animated: true });
+    }
     setActiveTab(index === 0 ? "live" : "following");
   }
 
   function handlePageChange(e: any) {
-    const page = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+    const page = Math.round(e.nativeEvent.contentOffset.x / windowWidth);
     setActiveTab(page === 0 ? "live" : "following");
   }
 
@@ -441,8 +458,7 @@ export default function HomeScreen() {
 
 
   return (
-
-    <View style={styles.container}>
+    <View style={[styles.container, Platform.OS === "web" && { height: "100%" }]}>
       <Stack.Screen
         options={{
           headerTitle: "",
@@ -509,7 +525,15 @@ export default function HomeScreen() {
                 <TouchableOpacity
                   key={u.id}
                   style={styles.searchResultRow}
-                  onPress={() => { closeSearch(); router.push(`/user/${u.id}`); }}
+                  onPress={() => { 
+                    setShowSearch(false); 
+                    // Small delay to allow modal exit to begin smoothly
+                    setTimeout(() => {
+                      router.push(`/user/${u.id}`);
+                      // Wait for animation to finish before clearing
+                      setTimeout(clearSearch, 400);
+                    }, 50); 
+                  }}
                   activeOpacity={0.7}
                 >
                   <View style={styles.searchResultAvatar}>
@@ -544,54 +568,92 @@ export default function HomeScreen() {
         <View style={styles.tabDivider} />
       </View>
 
-      <Animated.ScrollView
-        ref={pagerRef as any}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        scrollEventThrottle={16}
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: Platform.OS !== "web" })}
-
-        onMomentumScrollEnd={handlePageChange}
-        style={{ flex: 1 }}
-      >
-        <View style={{ width: SCREEN_WIDTH }}>
-          <FlatList
-            data={sessions}
-            keyExtractor={(item) => item.id}
-            renderItem={renderSession}
-
-
-            contentContainerStyle={styles.list}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.accent} />}
-            ListEmptyComponent={
-              <View style={styles.empty}>
-                <Ionicons name="radio-outline" size={56} color={theme.textMuted} style={styles.emptyEmoji} />
-                <Text style={styles.emptyTitle}>No live sessions</Text>
-                <Text style={styles.emptySubtitle}>Be the first to go live!</Text>
-              </View>
-            }
-          />
+      {Platform.OS === "web" ? (
+        <View style={{ flex: 1, alignItems: "center" }}>
+          {activeTab === "live" ? (
+            <FlatList
+              key={`live-${numColumns}`}
+              data={sessions}
+              numColumns={numColumns}
+              keyExtractor={(item) => item.id}
+              renderItem={renderSession}
+              contentContainerStyle={[styles.list, { width: contentWidth, paddingBottom: 100 }]}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.accent} />}
+              ListEmptyComponent={
+                <View style={styles.empty}>
+                  <Ionicons name="radio-outline" size={56} color={theme.textMuted} style={styles.emptyEmoji} />
+                  <Text style={styles.emptyTitle}>No live sessions</Text>
+                  <Text style={styles.emptySubtitle}>Be the first to go live!</Text>
+                </View>
+              }
+            />
+          ) : (
+            <FlatList
+              data={followingSessions}
+              keyExtractor={(item) => item.id}
+              renderItem={renderFollowingSession}
+              contentContainerStyle={[
+                styles.listFollowing, 
+                { width: Math.min(windowWidth, followingMaxWidth), paddingBottom: 100 }
+              ]}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.accent} />}
+              ListEmptyComponent={
+                <View style={styles.empty}>
+                  <Ionicons name="people-outline" size={56} color={theme.textMuted} style={styles.emptyEmoji} />
+                  <Text style={styles.emptyTitle}>No live from people you follow</Text>
+                  <Text style={styles.emptySubtitle}>Follow creators to see their streams here</Text>
+                </View>
+              }
+            />
+          )}
         </View>
-        <View style={{ width: SCREEN_WIDTH }}>
-          <FlatList
-            data={followingSessions}
-            keyExtractor={(item) => item.id}
-            renderItem={renderFollowingSession}
-
-            contentContainerStyle={styles.listFollowing}
-
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.accent} />}
-            ListEmptyComponent={
-              <View style={styles.empty}>
-                <Ionicons name="people-outline" size={56} color={theme.textMuted} style={styles.emptyEmoji} />
-                <Text style={styles.emptyTitle}>No live from people you follow</Text>
-                <Text style={styles.emptySubtitle}>Follow creators to see their streams here</Text>
-              </View>
-            }
-          />
-        </View>
-      </Animated.ScrollView>
+      ) : (
+        <Animated.ScrollView
+          ref={pagerRef as any}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          scrollEventThrottle={16}
+          onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: (Platform.OS as any) !== "web" })}
+          onMomentumScrollEnd={handlePageChange}
+          style={{ flex: 1 }}
+        >
+          <View style={{ width: windowWidth, alignItems: "center" }}>
+            <FlatList
+              key={`live-${numColumns}`}
+              data={sessions}
+              numColumns={numColumns}
+              keyExtractor={(item) => item.id}
+              renderItem={renderSession}
+              contentContainerStyle={[styles.list, { width: contentWidth }]}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.accent} />}
+              ListEmptyComponent={
+                <View style={styles.empty}>
+                  <Ionicons name="radio-outline" size={56} color={theme.textMuted} style={styles.emptyEmoji} />
+                  <Text style={styles.emptyTitle}>No live sessions</Text>
+                  <Text style={styles.emptySubtitle}>Be the first to go live!</Text>
+                </View>
+              }
+            />
+          </View>
+          <View style={{ width: windowWidth, alignItems: "center" }}>
+            <FlatList
+              data={followingSessions}
+              keyExtractor={(item) => item.id}
+              renderItem={renderFollowingSession}
+              contentContainerStyle={[styles.listFollowing, { width: Math.min(windowWidth, followingMaxWidth) }]}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.accent} />}
+              ListEmptyComponent={
+                <View style={styles.empty}>
+                  <Ionicons name="people-outline" size={56} color={theme.textMuted} style={styles.emptyEmoji} />
+                  <Text style={styles.emptyTitle}>No live from people you follow</Text>
+                  <Text style={styles.emptySubtitle}>Follow creators to see their streams here</Text>
+                </View>
+              }
+            />
+          </View>
+        </Animated.ScrollView>
+      )}
 
       <Modal visible={showGoLive} transparent animationType="fade" onRequestClose={() => setShowGoLive(false)}>
         <KeyboardAvoidingView

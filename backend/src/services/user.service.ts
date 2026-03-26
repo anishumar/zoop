@@ -153,7 +153,7 @@ export class UserService {
     });
     if (!user) throw new ApiError(404, "User not found");
 
-    const [followerCount, followingCount, streamCount, isFollowing] = await Promise.all([
+    const [followerCount, followingCount, streamCount, isFollowing, productCount] = await Promise.all([
       prisma.follow.count({ where: { followingId: targetId } }),
       prisma.follow.count({ where: { followerId: targetId } }),
       prisma.liveSession.count({ where: { hostId: targetId, recordingUrl: { not: null } } }),
@@ -162,9 +162,10 @@ export class UserService {
             where: { followerId_followingId: { followerId: requesterId, followingId: targetId } },
           }).then(Boolean)
         : Promise.resolve(false),
+      prisma.product.count({ where: { ownerId: targetId } }),
     ]);
 
-    return { ...user, followerCount, followingCount, streamCount, isFollowing };
+    return { ...user, followerCount, followingCount, streamCount, isFollowing, productCount };
   }
 
   /**

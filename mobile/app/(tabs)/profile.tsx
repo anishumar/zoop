@@ -163,7 +163,14 @@ export default function ProfileScreen() {
   }
 
   function scrollToPage(index: number) {
-    pagerRef.current?.scrollTo({ x: index * SCREEN_WIDTH, animated: true });
+    if ((Platform.OS as any) === "web") {
+      Animated.spring(scrollX, {
+        toValue: index * SCREEN_WIDTH,
+        useNativeDriver: false,
+      }).start();
+    } else {
+      pagerRef.current?.scrollTo({ x: index * SCREEN_WIDTH, animated: true });
+    }
     setActiveTab(index === 0 ? "streams" : "products");
   }
 
@@ -877,7 +884,7 @@ export default function ProfileScreen() {
   // ─── Main Render ─────────────────────────────────────
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, Platform.OS === "web" && { height: "100%" }]}>
       {modals}
       {renderProfileHeader()}
 
@@ -897,42 +904,60 @@ export default function ProfileScreen() {
         <View style={styles.tabDivider} />
       </View>
 
-      <Animated.ScrollView
-        ref={pagerRef as any}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        scrollEventThrottle={16}
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: Platform.OS !== "web" })}
-
-        onMomentumScrollEnd={handlePageChange}
-        style={{ flex: 1 }}
-      >
-        <View style={{ width: SCREEN_WIDTH }}>
+      {Platform.OS === "web" ? (
+        <View style={{ flex: 1, alignItems: "center" }}>
           <FlatList
-            data={streams}
-            keyExtractor={(item) => item.id}
-            renderItem={renderStreamCard}
+            key={activeTab}
+            data={(activeTab === "streams" ? streams : products) as any}
+            keyExtractor={(item: any) => item.id}
+            renderItem={(activeTab === "streams" ? renderStreamCard : renderProductCard) as any}
             numColumns={2}
-            contentContainerStyle={styles.gridList}
             columnWrapperStyle={styles.gridRow}
+            contentContainerStyle={[styles.gridList, { width: Math.min(SCREEN_WIDTH, 1200) }]}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.accent} />}
-            ListEmptyComponent={fetchingStreams ? <ActivityIndicator style={{ marginTop: 40 }} /> : renderStreamsEmpty}
+            ListEmptyComponent={activeTab === "streams" 
+              ? (fetchingStreams ? <ActivityIndicator style={{ marginTop: 40 }} /> : renderStreamsEmpty)
+              : renderProductsEmpty
+            }
           />
         </View>
-        <View style={{ width: SCREEN_WIDTH }}>
-          <FlatList
-            data={products}
-            keyExtractor={(item) => item.id}
-            renderItem={renderProductCard}
-            numColumns={2}
-            contentContainerStyle={styles.gridList}
-            columnWrapperStyle={styles.gridRow}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.accent} />}
-            ListEmptyComponent={renderProductsEmpty}
-          />
-        </View>
-      </Animated.ScrollView>
+      ) : (
+        <Animated.ScrollView
+          ref={pagerRef as any}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          scrollEventThrottle={16}
+          onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: (Platform.OS as any) !== "web" })}
+          onMomentumScrollEnd={handlePageChange}
+          style={{ flex: 1 }}
+        >
+          <View style={{ width: SCREEN_WIDTH }}>
+            <FlatList
+              data={streams}
+              keyExtractor={(item) => item.id}
+              renderItem={renderStreamCard}
+              numColumns={2}
+              contentContainerStyle={styles.gridList}
+              columnWrapperStyle={styles.gridRow}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.accent} />}
+              ListEmptyComponent={fetchingStreams ? <ActivityIndicator style={{ marginTop: 40 }} /> : renderStreamsEmpty}
+            />
+          </View>
+          <View style={{ width: SCREEN_WIDTH }}>
+            <FlatList
+              data={products}
+              keyExtractor={(item) => item.id}
+              renderItem={renderProductCard}
+              numColumns={2}
+              contentContainerStyle={styles.gridList}
+              columnWrapperStyle={styles.gridRow}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.accent} />}
+              ListEmptyComponent={renderProductsEmpty}
+            />
+          </View>
+        </Animated.ScrollView>
+      )}
     </View>
   );
 }
@@ -972,7 +997,7 @@ const createStyles = (theme: AppTheme) =>
     statDivider: { width: 1, height: 28, backgroundColor: theme.border },
 
     // Segmented Control
-    segmentedWrapper: { width: "100%", marginTop: 20 },
+    segmentedWrapper: { width: "100%", marginTop: 20, marginBottom: 12 },
     segmentedControl: { flexDirection: "row" },
     segmentTab: { flex: 1, flexDirection: "row", paddingVertical: 13, alignItems: "center", justifyContent: "center" },
     segmentTabActive: {},
