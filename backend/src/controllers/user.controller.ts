@@ -48,7 +48,7 @@ export const searchUsers = catchAsync(async (req: Request, res: Response) => {
 });
 
 export const getUserPublicProfile = catchAsync(async (req: Request, res: Response) => {
-  const result = await UserService.getPublicProfile(req.params.id, req.user?.userId);
+  const result = await UserService.getPublicProfile(req.params.id as string, req.user?.userId);
   sendSuccess(res, result);
 });
 
