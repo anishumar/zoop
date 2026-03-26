@@ -10,15 +10,17 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { useAuth } from "../contexts/AuthContext";
 import { apiClient } from "../api/client";
-import { User, ApiResponse } from "../types";
+import { User, ApiResponse, Product } from "../types";
 import { AppTheme, useAppTheme } from "../theme";
 import { uploadAvatarImage } from "../api/uploads";
+import ImageWithFallback from "./ImageWithFallback";
 
 interface ProfileMenuBottomSheetProps {
   visible: boolean;
@@ -32,8 +34,11 @@ export default function ProfileMenuBottomSheet({ visible, onClose }: ProfileMenu
   const styles = useMemo(() => createStyles(theme), [theme]);
 
   const [saving, setSaving] = useState(false);
+  const [view, setView] = useState<"menu" | "edit" | "wishlist">("menu");
   const [editField, setEditField] = useState<"name" | "bio" | "phone" | null>(null);
   const [editValue, setEditValue] = useState("");
+  const [wishlistProducts, setWishlistProducts] = useState<Product[]>([]);
+  const [loadingWishlist, setLoadingWishlist] = useState(false);
 
   const editFieldLabels: Record<string, string> = { name: "Edit Name", bio: "Edit About", phone: "Phone Number" };
 
@@ -46,33 +51,58 @@ export default function ProfileMenuBottomSheet({ visible, onClose }: ProfileMenu
     { icon: "log-out-outline", label: "Sign Out", onPress: () => handleMenuAction("signout"), danger: true },
   ];
 
+  async function fetchWishlist() {
+    setLoadingWishlist(true);
+    try {
+      const res = await apiClient<ApiResponse<{ products: Product[] }>>("/wishlist");
+      setWishlistProducts(res.data.products);
+    } catch (err) {}
+    setLoadingWishlist(false);
+  }
+
   function handleMenuAction(action: string) {
-    onClose();
-    setTimeout(() => {
-      switch (action) {
-        case "edit_name":
-          setEditValue(user?.name || "");
-          setEditField("name");
-          break;
-        case "about":
-          setEditValue(user?.bio || "");
-          setEditField("bio");
-          break;
-        case "phone":
-          setEditValue(user?.phone || "");
-          setEditField("phone");
-          break;
-        case "profile_picture":
-          handlePickAvatar();
-          break;
-        case "wishlist":
-          router.push("/wishlist");
-          break;
-        case "signout":
-          logout();
-          break;
-      }
-    }, 300);
+    switch (action) {
+      case "edit_name":
+        setEditValue(user?.name || "");
+        setEditField("name");
+        setView("edit");
+        break;
+      case "about":
+        setEditValue(user?.bio || "");
+        setEditField("bio");
+        setView("edit");
+        break;
+      case "phone":
+        setEditValue(user?.phone || "");
+        setEditField("phone");
+        setView("edit");
+        break;
+      case "profile_picture":
+        handlePickAvatar();
+        break;
+      case "wishlist":
+        setView("wishlist");
+        fetchWishlist();
+        break;
+      case "signout":
+        onClose();
+        setTimeout(() => logout(), 300);
+        break;
+    }
+  }
+
+  function handleBack() {
+    setView("menu");
+    setEditField(null);
+  }
+
+  async function removeFromWishlist(productId: string) {
+    try {
+      setWishlistProducts(prev => prev.filter(p => p.id !== productId));
+      await apiClient(`/wishlist/${productId}/toggle`, { method: "POST" });
+    } catch (err) {
+      fetchWishlist();
+    }
   }
 
   async function handleSaveField() {
@@ -86,7 +116,7 @@ export default function ProfileMenuBottomSheet({ visible, onClose }: ProfileMenu
         body,
       });
       setUser(res.data);
-      setEditField(null);
+      handleBack();
     } catch (err: any) {
       Alert.alert("Error", err.message);
     } finally {
@@ -136,74 +166,124 @@ export default function ProfileMenuBottomSheet({ visible, onClose }: ProfileMenu
   }
 
   return (
-    <>
-      <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-        <View style={styles.modalOverlay}>
-          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} />
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} />
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"}>
           <View style={styles.menuSheet}>
             <View style={styles.menuHandle} />
-            <View style={styles.menuHeader}>
-              <View style={styles.menuAvatar}>
-                <Text style={styles.menuAvatarText}>{user?.name?.charAt(0).toUpperCase() || "?"}</Text>
-              </View>
-              <View style={styles.menuHeaderInfo}>
-                <Text style={styles.menuHeaderName}>{user?.name}</Text>
-                <Text style={styles.menuHeaderEmail}>{user?.email}</Text>
-              </View>
-            </View>
-            <View style={styles.menuDivider} />
-            {menuItems.map((item) => (
-              <View key={item.label}>
-                {item.danger && <View style={styles.menuDivider} />}
-                <TouchableOpacity style={styles.menuItem} onPress={item.onPress} activeOpacity={0.6}>
-                  <Ionicons name={item.icon as any} size={22} color={item.danger ? theme.danger : theme.text} style={styles.menuItemIcon} />
-                  <Text style={[styles.menuItemLabel, item.danger && styles.menuItemLabelDanger]}>{item.label}</Text>
-                  {!item.danger && <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />}
-                </TouchableOpacity>
-              </View>
-            ))}
-          </View>
-        </View>
-      </Modal>
 
-      <Modal visible={editField !== null} transparent animationType="slide" onRequestClose={() => setEditField(null)}>
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
-          <View style={styles.modalOverlay}>
-            <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setEditField(null)} />
-            <View style={[styles.menuSheet, { paddingBottom: Platform.OS === "ios" ? 40 : 24 }]}>
-              <View style={styles.menuHandle} />
-              <Text style={styles.editModalTitle}>{editField ? editFieldLabels[editField] : ""}</Text>
-              <TextInput
-                style={[styles.editInput, editField === "bio" && { minHeight: 100, textAlignVertical: "top" }]}
-                value={editValue}
-                onChangeText={setEditValue}
-                placeholder={editField === "name" ? "Your name" : editField === "bio" ? "Tell people about yourself" : "Phone number"}
-                placeholderTextColor={theme.textMuted}
-                autoFocus
-                multiline={editField === "bio"}
-                numberOfLines={editField === "bio" ? 4 : 1}
-                keyboardType={editField === "phone" ? "phone-pad" : "default"}
-              />
-              <View style={styles.editButtons}>
-                <TouchableOpacity style={styles.editCancelBtn} onPress={() => setEditField(null)}>
-                  <Text style={styles.cancelText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.editSaveBtn, saving && { opacity: 0.6 }]} onPress={handleSaveField} disabled={saving}>
-                  {saving ? <ActivityIndicator size="small" color={theme.textOnAccent} /> : <Text style={styles.createText}>Save</Text>}
-                </TouchableOpacity>
+            {view === "menu" ? (
+              <View>
+                <View style={styles.menuHeader}>
+                  <View style={styles.menuAvatar}>
+                    {user?.avatarUrl ? (
+                      <Image source={{ uri: user.avatarUrl }} style={{ width: 52, height: 52, borderRadius: 26 }} />
+                    ) : (
+                      <Text style={styles.menuAvatarText}>{user?.name?.charAt(0).toUpperCase() || "?"}</Text>
+                    )}
+                  </View>
+                  <View style={styles.menuHeaderInfo}>
+                    <Text style={styles.menuHeaderName}>{user?.name}</Text>
+                    <Text style={styles.menuHeaderEmail}>{user?.email}</Text>
+                  </View>
+                </View>
+                <View style={styles.menuDivider} />
+                {menuItems.map((item) => (
+                  <View key={item.label}>
+                    {item.danger && <View style={styles.menuDivider} />}
+                    <TouchableOpacity style={styles.menuItem} onPress={item.onPress} activeOpacity={0.6}>
+                      <Ionicons name={item.icon as any} size={22} color={item.danger ? theme.danger : theme.text} style={styles.menuItemIcon} />
+                      <Text style={[styles.menuItemLabel, item.danger && styles.menuItemLabelDanger]}>{item.label}</Text>
+                      {!item.danger && <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />}
+                    </TouchableOpacity>
+                  </View>
+                ))}
               </View>
-            </View>
+            ) : view === "edit" ? (
+              <View style={{ paddingBottom: 10 }}>
+                <View style={[styles.menuHeader, { paddingHorizontal: 16, paddingBottom: 20 }]}>
+                  <TouchableOpacity onPress={handleBack} style={{ padding: 4 }}>
+                    <Ionicons name="arrow-back" size={24} color={theme.text} />
+                  </TouchableOpacity>
+                  <Text style={[styles.menuHeaderName, { marginLeft: 16, fontSize: 20 }]}>
+                    {editField ? editFieldLabels[editField] : ""}
+                  </Text>
+                </View>
+
+                <TextInput
+                  style={[styles.editInput, editField === "bio" && { minHeight: 120, textAlignVertical: "top" }]}
+                  value={editValue}
+                  onChangeText={setEditValue}
+                  placeholder={editField === "name" ? "Your name" : editField === "bio" ? "Tell people about yourself" : "Phone number"}
+                  placeholderTextColor={theme.textMuted}
+                  autoFocus
+                  multiline={editField === "bio"}
+                  numberOfLines={editField === "bio" ? 4 : 1}
+                  keyboardType={editField === "phone" ? "phone-pad" : "default"}
+                />
+
+                <View style={[styles.editButtons, { marginTop: 24 }]}>
+                  <TouchableOpacity style={[styles.editSaveBtn, { flex: 1 }, saving && { opacity: 0.6 }]} onPress={handleSaveField} disabled={saving}>
+                    {saving ? <ActivityIndicator size="small" color={theme.textOnAccent} /> : <Text style={styles.createText}>Save Changes</Text>}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <View style={{ flex: 1, minHeight: 600 }}>
+                <View style={[styles.menuHeader, { paddingHorizontal: 16, paddingBottom: 10 }]}>
+                  <TouchableOpacity onPress={handleBack} style={{ padding: 4 }}>
+                    <Ionicons name="arrow-back" size={24} color={theme.text} />
+                  </TouchableOpacity>
+                  <Text style={[styles.menuHeaderName, { marginLeft: 16, fontSize: 20 }]}>My Wishlist</Text>
+                </View>
+
+                {loadingWishlist ? (
+                  <View style={{ flex: 1, justifyContent: "center", alignItems: "center", paddingTop: 50 }}>
+                    <ActivityIndicator size="large" color={theme.accent} />
+                  </View>
+                ) : wishlistProducts.length === 0 ? (
+                  <View style={{ alignItems: "center", paddingTop: 80, paddingHorizontal: 32 }}>
+                    <Ionicons name="heart-outline" size={56} color={theme.textMuted} />
+                    <Text style={{ fontSize: 18, fontWeight: "700", color: theme.text, marginTop: 16 }}>Wishlist is empty</Text>
+                    <Text style={{ fontSize: 14, color: theme.textMuted, marginTop: 4, textAlign: "center" }}>Products you ♥️ during streams will appear here</Text>
+                  </View>
+                ) : (
+                  <View style={{ flex: 1, paddingHorizontal: 20, paddingTop: 10 }}>
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" }}>
+                      {wishlistProducts.map(item => (
+                        <View key={item.id} style={{ width: "48%", marginBottom: 16, backgroundColor: theme.surfaceAlt, borderRadius: 12, overflow: "hidden" }}>
+                          <View style={{ width: "100%", height: 120 }}>
+                            <ImageWithFallback uri={item.imageUrl} style={{ width: "100%", height: "100%" }} />
+                            <TouchableOpacity 
+                              style={{ position: "absolute", top: 6, right: 6, backgroundColor: "rgba(255,255,255,0.9)", borderRadius: 12, padding: 4 }}
+                              onPress={() => removeFromWishlist(item.id)}
+                            >
+                              <Ionicons name="heart" size={16} color="#ef4444" />
+                            </TouchableOpacity>
+                          </View>
+                          <View style={{ padding: 8 }}>
+                            <Text style={{ fontSize: 13, fontWeight: "600", color: theme.text }} numberOfLines={1}>{item.title}</Text>
+                            <Text style={{ fontSize: 14, fontWeight: "800", color: theme.accent, marginTop: 2 }}>₹{item.price}</Text>
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                )}
+              </View>
+            )}
           </View>
         </KeyboardAvoidingView>
-      </Modal>
+      </View>
 
-      {saving && !editField && (
+      {saving && (
         <View style={styles.savingOverlay}>
           <ActivityIndicator size="large" color={theme.accent} />
-          <Text style={styles.savingText}>Uploading...</Text>
+          <Text style={styles.savingText}>Processing...</Text>
         </View>
       )}
-    </>
+    </Modal>
   );
 }
 
@@ -213,6 +293,8 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
     backgroundColor: theme.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28,
     paddingTop: 10, paddingBottom: Platform.OS === "ios" ? 40 : 24,
     borderWidth: 1, borderBottomWidth: 0, borderColor: theme.border,
+    minHeight: 600,
+    maxHeight: "92%",
     ...Platform.select({
       ios: { shadowColor: "#000", shadowOffset: { width: 0, height: -6 }, shadowOpacity: 0.15, shadowRadius: 20 },
       android: { elevation: 24 },

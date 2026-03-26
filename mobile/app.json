@@ -22,7 +22,8 @@
         "backgroundColor": "#0f172a"
       },
       "package": "com.anonymous.zooplive",
-      "softwareKeyboardLayoutMode": "resize"
+      "softwareKeyboardLayoutMode": "resize",
+      "usesCleartextTraffic": true
     },
     "web": {
       "favicon": "./assets/favicon.png"

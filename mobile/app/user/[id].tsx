@@ -53,23 +53,7 @@ export default function UserProfileScreen() {
   const [isFollowing, setIsFollowing] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("streams");
 
-  const pagerRef = useRef<ScrollView>(null);
-  const scrollX = useRef(new Animated.Value(0)).current;
-  const tabIndicatorX = scrollX.interpolate({
-    inputRange: [0, SCREEN_WIDTH],
-    outputRange: [0, SCREEN_WIDTH / 2],
-    extrapolate: "clamp",
-  });
 
-  function scrollToPage(index: number) {
-    pagerRef.current?.scrollTo({ x: index * SCREEN_WIDTH, animated: true });
-    setActiveTab(index === 0 ? "streams" : "products");
-  }
-
-  function handlePageChange(e: any) {
-    const page = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
-    setActiveTab(page === 0 ? "streams" : "products");
-  }
 
   const fetchData = useCallback(async () => {
     if (!id) return;
@@ -110,29 +94,32 @@ export default function UserProfileScreen() {
   }
 
   function renderStreamCard({ item }: { item: LiveSession }) {
+    const isReel = Boolean(item.description);
     return (
       <TouchableOpacity
-        style={styles.gridCard}
-        onPress={() => router.push(`/viewer/${item.id}`)}
+        style={styles.streamCard}
+        onPress={() => router.push(`/reels?startId=${item.id}&hostId=${profile?.id}&source=profile`)}
         activeOpacity={0.7}
       >
         <View style={styles.streamThumbnail}>
           {item.thumbnailUrl ? (
-            <Image source={{ uri: item.thumbnailUrl }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+            <Image source={{ uri: item.thumbnailUrl }} style={styles.streamThumbnailImage} />
           ) : (
-            <View style={styles.thumbnailPlaceholder}>
-              <Ionicons name="videocam-outline" size={28} color={theme.textMuted} />
+            <View style={styles.streamThumbnailPlaceholder}>
+              <Ionicons name="videocam-outline" size={32} color={theme.textMuted} />
             </View>
           )}
           <View style={styles.playOverlay}>
-            <Ionicons name="play" size={16} color="#fff" />
+            <View style={styles.playIconCircle}>
+              <Ionicons name="play" size={12} color="#fff" style={{ marginLeft: 1.5 }} />
+            </View>
           </View>
-        </View>
-        <View style={styles.cardInfo}>
-          <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
-          <Text style={styles.cardSub}>
-            {item.endedAt ? new Date(item.endedAt).toLocaleDateString() : "Recorded"}
-          </Text>
+          {isReel && (
+            <View style={styles.reelBadge}>
+              <Ionicons name="film-outline" size={10} color="#fff" />
+              <Text style={styles.reelBadgeText}>REEL</Text>
+            </View>
+          )}
         </View>
       </TouchableOpacity>
     );
@@ -140,22 +127,33 @@ export default function UserProfileScreen() {
 
   function renderProductCard({ item }: { item: Product }) {
     return (
-      <View style={styles.gridCard}>
-        <View style={styles.productThumbnail}>
+      <TouchableOpacity 
+        style={styles.gridCard}
+        activeOpacity={0.8}
+        onPress={() => {
+           // Preview only?
+        }}
+      >
+        <View style={styles.gridImageWrapper}>
           {item.imageUrl ? (
-            <Image source={{ uri: item.imageUrl }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+            <Image source={{ uri: item.imageUrl }} style={styles.gridImage} />
           ) : (
-            <View style={styles.thumbnailPlaceholder}>
-              <Ionicons name="cube-outline" size={28} color={theme.textMuted} />
+            <View style={styles.gridImagePlaceholder}>
+              <Ionicons name="cube-outline" size={32} color={theme.textMuted} />
             </View>
           )}
         </View>
-        <View style={styles.cardInfo}>
-          <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
-          <Text style={styles.cardPrice}>₹{item.price.toFixed(2)}</Text>
-          <Text style={styles.cardSub}>Qty: {item.quantity}</Text>
+        <View style={styles.gridCardInfo}>
+          <Text style={styles.gridCardTitle} numberOfLines={1}>{item.title}</Text>
+          <Text style={styles.gridCardPrice}>₹{item.price.toFixed(2)}</Text>
+          <View style={styles.gridCardMeta}>
+             <Text style={styles.gridCardMetaText}>Qty: {item.quantity}</Text>
+             {item.sizes && item.sizes.length > 0 && (
+                <Text style={styles.gridCardMetaText} numberOfLines={1}>{item.sizes.join(", ")}</Text>
+             )}
+          </View>
         </View>
-      </View>
+      </TouchableOpacity>
     );
   }
 
@@ -245,57 +243,47 @@ export default function UserProfileScreen() {
   return (
     <View style={styles.container}>
       <Stack.Screen options={{ headerTitle: profile?.name ?? "Profile" }} />
-      {renderHeader()}
-
-      {/* Segmented Control */}
-      <View style={styles.segmentedWrapper}>
-        <View style={styles.segmentedControl}>
-          <TouchableOpacity style={styles.segmentTab} onPress={() => scrollToPage(0)} activeOpacity={0.8}>
-            <Ionicons name="videocam-outline" size={15} color={activeTab === "streams" ? theme.text : theme.textMuted} style={{ marginRight: 5 }} />
-            <Text style={[styles.segmentText, activeTab === "streams" && styles.segmentTextActive]}>Streams</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.segmentTab} onPress={() => scrollToPage(1)} activeOpacity={0.8}>
-            <Ionicons name="cube-outline" size={15} color={activeTab === "products" ? theme.text : theme.textMuted} style={{ marginRight: 5 }} />
-            <Text style={[styles.segmentText, activeTab === "products" && styles.segmentTextActive]}>Products</Text>
-          </TouchableOpacity>
-        </View>
-        <Animated.View style={[styles.tabIndicator, { transform: [{ translateX: tabIndicatorX }] }]} />
-        <View style={styles.tabDivider} />
-      </View>
-
-      <Animated.ScrollView
-        ref={pagerRef as any}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        scrollEventThrottle={16}
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: true })}
-        onMomentumScrollEnd={handlePageChange}
-        style={{ flex: 1 }}
-      >
-        <View style={{ width: SCREEN_WIDTH }}>
-          <FlatList
-            data={streams}
-            keyExtractor={(item) => item.id}
-            renderItem={renderStreamCard}
-            numColumns={2}
-            contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 24 }]}
-            columnWrapperStyle={styles.gridRow}
-            ListEmptyComponent={renderEmpty}
-          />
-        </View>
-        <View style={{ width: SCREEN_WIDTH }}>
-          <FlatList
-            data={products}
-            keyExtractor={(item) => item.id}
-            renderItem={renderProductCard}
-            numColumns={2}
-            contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 24 }]}
-            columnWrapperStyle={styles.gridRow}
-            ListEmptyComponent={renderEmpty}
-          />
-        </View>
-      </Animated.ScrollView>
+      
+      <FlatList
+        key={activeTab} 
+        data={(activeTab === "streams" ? streams : products) as any}
+        keyExtractor={(item) => item.id}
+        renderItem={(activeTab === "streams" ? renderStreamCard : renderProductCard) as any}
+        numColumns={2}
+        columnWrapperStyle={styles.gridRow}
+        contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 24 }]}
+        ListHeaderComponent={
+          <View>
+            {renderHeader()}
+            <View style={styles.segmentedWrapper}>
+              <View style={styles.segmentedControl}>
+                <TouchableOpacity 
+                  style={styles.segmentTab} 
+                  onPress={() => setActiveTab("streams")} 
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="videocam-outline" size={15} color={activeTab === "streams" ? theme.text : theme.textMuted} style={{ marginRight: 5 }} />
+                  <Text style={[styles.segmentText, activeTab === "streams" && styles.segmentTextActive]}>Streams</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={styles.segmentTab} 
+                  onPress={() => setActiveTab("products")} 
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="cube-outline" size={15} color={activeTab === "products" ? theme.text : theme.textMuted} style={{ marginRight: 5 }} />
+                  <Text style={[styles.segmentText, activeTab === "products" && styles.segmentTextActive]}>Products</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={[
+                styles.tabIndicator, 
+                { transform: [{ translateX: activeTab === "streams" ? 0 : SCREEN_WIDTH / 2 }] }
+              ]} />
+              <View style={styles.tabDivider} />
+            </View>
+          </View>
+        }
+        ListEmptyComponent={renderEmpty}
+      />
     </View>
   );
 }
@@ -372,44 +360,77 @@ const createStyles = (theme: AppTheme) =>
     segmentText: { fontSize: 15, fontWeight: "600", color: theme.textMuted },
     segmentTextActive: { color: theme.text, fontWeight: "700" },
 
-    // Shared grid card
+    // Updated grid card (Products)
     gridCard: {
-      flex: 1,
+      width: (SCREEN_WIDTH - 32 - 12) / 2,
       backgroundColor: theme.surface,
+      borderRadius: 14,
+      overflow: "hidden",
+      ...Platform.select({
+        ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 10 },
+        android: { elevation: 3 },
+      }),
+    },
+    gridImageWrapper: { width: "100%", height: (SCREEN_WIDTH - 32 - 12) / 2, backgroundColor: theme.surfaceAlt },
+    gridImage: { width: "100%", height: "100%", resizeMode: "cover" },
+    gridImagePlaceholder: { width: "100%", height: "100%", justifyContent: "center", alignItems: "center" },
+    gridCardInfo: { padding: 12 },
+    gridCardTitle: { fontSize: 14, fontWeight: "600", color: theme.text, marginBottom: 4 },
+    gridCardPrice: { fontSize: 15, fontWeight: "800", color: theme.accent },
+    gridCardMeta: { flexDirection: "row", gap: 8, marginTop: 6, flexWrap: "wrap" },
+    gridCardMetaText: { fontSize: 12, color: theme.textMuted, fontWeight: "500" },
+
+    // Stream List
+    streamCard: {
+      width: (SCREEN_WIDTH - 32 - 12) / 2,
       borderRadius: 12,
       overflow: "hidden",
+      backgroundColor: theme.surfaceAlt,
     },
-
-    // Stream thumbnail (portrait)
     streamThumbnail: {
-      aspectRatio: 9 / 16,
+      width: "100%",
+      aspectRatio: 1, // Matches products for cleaner grid
       backgroundColor: theme.surfaceAlt,
+      position: "relative",
+    },
+    streamThumbnailImage: {
+      width: "100%",
+      height: "100%",
+      resizeMode: "cover",
+    },
+    streamThumbnailPlaceholder: {
+      width: "100%",
+      height: "100%",
       justifyContent: "center",
       alignItems: "center",
     },
-
-    // Product thumbnail (square)
-    productThumbnail: {
-      aspectRatio: 1,
-      backgroundColor: theme.surfaceAlt,
-      justifyContent: "center",
-      alignItems: "center",
-    },
-
-    thumbnailPlaceholder: { justifyContent: "center", alignItems: "center", flex: 1 },
     playOverlay: {
       position: "absolute",
-      bottom: 8,
-      right: 8,
-      backgroundColor: "rgba(0,0,0,0.55)",
-      borderRadius: 14,
-      padding: 5,
+      top: 8,
+      left: 8,
+      zIndex: 1,
     },
-
-    cardInfo: { padding: 8 },
-    cardTitle: { fontSize: 13, fontWeight: "600", color: theme.text },
-    cardSub: { fontSize: 11, color: theme.textMuted, marginTop: 2 },
-    cardPrice: { fontSize: 13, fontWeight: "700", color: theme.accent, marginTop: 2 },
+    playIconCircle: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      backgroundColor: "rgba(0,0,0,0.5)",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    reelBadge: {
+      position: "absolute",
+      top: 8,
+      right: 8,
+      backgroundColor: "rgba(0,0,0,0.6)",
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 12,
+      gap: 4,
+    },
+    reelBadgeText: { color: "#fff", fontSize: 10, fontWeight: "800" },
 
     emptyContent: { alignItems: "center", paddingTop: 48, gap: 12 },
     emptyText: { fontSize: 15, color: theme.textMuted },

@@ -459,7 +459,12 @@ export default function ProfileScreen() {
       <TouchableOpacity
         style={[styles.gridCard, deletingId === item.id && { opacity: 0.5 }]}
         activeOpacity={0.8}
-        onLongPress={() => handleProductOptions(item)}
+        onLongPress={() => {
+          Alert.alert("Delete Product", `Are you sure you want to delete "${item.title}"?`, [
+            { text: "Cancel", style: "cancel" },
+            { text: "Delete", style: "destructive", onPress: () => void handleDeleteProduct(item.id) },
+          ]);
+        }}
         onPress={() => handleProductOptions(item)}
       >
         <View style={styles.gridImageWrapper}>
@@ -512,7 +517,7 @@ export default function ProfileScreen() {
           )}
           <View style={styles.playOverlay}>
             <View style={styles.playIconCircle}>
-              <Ionicons name="play" size={18} color="#fff" style={{ marginLeft: 2 }} />
+              <Ionicons name="play" size={12} color="#fff" style={{ marginLeft: 1.5 }} />
             </View>
           </View>
           {item.description && (
@@ -521,15 +526,6 @@ export default function ProfileScreen() {
               <Text style={styles.reelBadgeText}>REEL</Text>
             </View>
           )}
-        </View>
-        <View style={styles.streamInfo}>
-          <Text style={styles.streamTitle} numberOfLines={1}>{item.title}</Text>
-          <View style={styles.streamMetaRow}>
-            <Ionicons name="calendar-outline" size={12} color={theme.textMuted} />
-            <Text style={styles.streamDate}>
-              {item.endedAt ? new Date(item.endedAt).toLocaleDateString() : "Recently Recorded"}
-            </Text>
-          </View>
         </View>
       </TouchableOpacity>
     );
@@ -610,17 +606,27 @@ export default function ProfileScreen() {
 
 
       {/* Product Create/Edit Modal */}
-      <Modal visible={showProductForm} transparent animationType="fade" onRequestClose={resetProductForm}>
+      <Modal visible={showProductForm} transparent animationType="slide" onRequestClose={resetProductForm}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
           <View style={styles.modalOverlay}>
             <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={resetProductForm} />
             <View style={[styles.formSheet, { maxHeight: "88%" }]}>
-              <ScrollView contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-                <Text style={styles.formTitle}>{editingProduct ? "Edit Product" : "New Product"}</Text>
+              <View style={styles.modalHeader}>
+                <TouchableOpacity onPress={resetProductForm}>
+                  <Text style={styles.modalHeaderLeft}>Cancel</Text>
+                </TouchableOpacity>
+                <Text style={styles.modalHeaderTitle}>{editingProduct ? "Edit Product" : "New Product"}</Text>
+                <TouchableOpacity onPress={handleSubmitProduct} disabled={prodSaving}>
+                  <Text style={[styles.headerActionText, prodSaving && { opacity: 0.5 }]}>
+                    {prodSaving ? "..." : (editingProduct ? "Update" : "Create")}
+                  </Text>
+                </TouchableOpacity>
+              </View>
 
+              <ScrollView contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
                 <Text style={styles.label}>Name</Text>
                 <TextInput style={styles.input} placeholder="Enter product name" placeholderTextColor="#64748b" value={prodTitle} onChangeText={setProdTitle} />
-
+                
                 <Text style={styles.label}>Description (Optional)</Text>
                 <TextInput 
                   style={[styles.input, { minHeight: 80, textAlignVertical: "top", paddingTop: 16 }]} 
@@ -664,22 +670,13 @@ export default function ProfileScreen() {
                   </View>
                 )}
               </ScrollView>
-
-              <View style={styles.formButtons}>
-                <TouchableOpacity style={styles.editCancelBtn} onPress={resetProductForm}>
-                  <Text style={styles.cancelText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.editSaveBtn, prodSaving && { opacity: 0.7 }]} onPress={handleSubmitProduct} disabled={prodSaving}>
-                  <Text style={styles.createText}>{prodSaving ? "Saving..." : (editingProduct ? "Update" : "Create Product")}</Text>
-                </TouchableOpacity>
-              </View>
             </View>
           </View>
         </KeyboardAvoidingView>
       </Modal>
 
       {/* Go Live Modal */}
-      <Modal visible={showGoLive} transparent animationType="fade" onRequestClose={() => setShowGoLive(false)}>
+      <Modal visible={showGoLive} transparent animationType="slide" onRequestClose={() => setShowGoLive(false)}>
         <KeyboardAvoidingView
           style={{ flex: 1 }}
           behavior={Platform.OS === "ios" ? "padding" : Platform.OS === "android" ? "height" : undefined}
@@ -690,27 +687,28 @@ export default function ProfileScreen() {
               activeOpacity={1} 
               onPress={() => setShowGoLive(false)}
             />
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Start Live Session</Text>
-              <TextInput
-                style={styles.modalInput}
-                placeholder="Session title..."
-                placeholderTextColor="#64748b"
-                value={sessionTitle}
-                onChangeText={setSessionTitle}
-                autoFocus={Platform.OS === "web"}
-              />
-              <View style={styles.modalButtons}>
-                <TouchableOpacity style={styles.modalCancel} onPress={() => setShowGoLive(false)}>
-                  <Text style={styles.modalCancelText}>Cancel</Text>
+            <View style={styles.formSheet}>
+              <View style={styles.modalHeader}>
+                <TouchableOpacity onPress={() => setShowGoLive(false)}>
+                  <Text style={styles.modalHeaderLeft}>Cancel</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.modalConfirm, creating && { opacity: 0.6 }]}
-                  onPress={handleGoLive}
-                  disabled={creating}
-                >
-                  <Text style={styles.modalConfirmText}>{creating ? "Starting..." : "Go Live"}</Text>
+                <Text style={styles.modalHeaderTitle}>Start Live Session</Text>
+                <TouchableOpacity onPress={handleGoLive} disabled={creating}>
+                  <Text style={[styles.headerActionText, creating && { opacity: 0.5 }]}>
+                    {creating ? "..." : "Go Live"}
+                  </Text>
                 </TouchableOpacity>
+              </View>
+
+              <View style={{ paddingHorizontal: 24, paddingBottom: 24 }}>
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="Session title..."
+                  placeholderTextColor="#64748b"
+                  value={sessionTitle}
+                  onChangeText={setSessionTitle}
+                  autoFocus={Platform.OS === "web"}
+                />
               </View>
             </View>
           </View>
@@ -723,9 +721,21 @@ export default function ProfileScreen() {
           <View style={styles.modalOverlay}>
             <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={resetReelForm} />
             <View style={[styles.formSheet, { maxHeight: "80%" }]}>
+              <View style={styles.modalHeader}>
+                <TouchableOpacity onPress={resetReelForm}>
+                  <Text style={styles.modalHeaderLeft}>Cancel</Text>
+                </TouchableOpacity>
+                <Text style={styles.modalHeaderTitle}>New Reel</Text>
+                <TouchableOpacity onPress={handlePostReel} disabled={uploading}>
+                  {uploading ? (
+                    <ActivityIndicator color={theme.accent} size="small" />
+                  ) : (
+                    <Text style={styles.headerActionText}>Post</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+
               <ScrollView contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled">
-                <Text style={styles.formTitle}>New Reel</Text>
-                
                 <Text style={styles.label}>Title</Text>
                 <TextInput 
                   style={styles.input} 
@@ -744,23 +754,6 @@ export default function ProfileScreen() {
                   onChangeText={setReelDescription}
                   multiline
                 />
-
-                <View style={styles.formButtons}>
-                  <TouchableOpacity style={styles.editCancelBtn} onPress={resetReelForm}>
-                    <Text style={styles.cancelText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={[styles.editSaveBtn, uploading && { opacity: 0.6 }]} 
-                    onPress={handlePostReel}
-                    disabled={uploading}
-                  >
-                    {uploading ? (
-                      <ActivityIndicator color="#fff" size="small" />
-                    ) : (
-                      <Text style={styles.createText}>Post Reel</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
               </ScrollView>
             </View>
           </View>
@@ -773,7 +766,24 @@ export default function ProfileScreen() {
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setActionStream(null)} />
           <View style={styles.menuSheet}>
-            <View style={styles.menuHandle} />
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={() => setActionStream(null)}>
+                <Text style={styles.modalHeaderLeft}>Cancel</Text>
+              </TouchableOpacity>
+              <View style={styles.modalHeaderRight}>
+                <TouchableOpacity
+                  onPress={() => void handleDeleteSelectedStream()}
+                  disabled={Boolean(actionStream && deletingStreamId === actionStream.id)}
+                >
+                  {actionStream && deletingStreamId === actionStream.id ? (
+                    <ActivityIndicator size="small" color={theme.danger} />
+                  ) : (
+                    <Ionicons name="trash-outline" size={20} color={theme.danger} />
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+
             {actionStream && (
               <View style={styles.actionSummary}>
                 <View style={{ width: "100%", height: 180, borderRadius: 12, backgroundColor: theme.surfaceAlt, overflow: "hidden", marginBottom: 16 }}>
@@ -789,23 +799,18 @@ export default function ProfileScreen() {
                 <Text style={{ fontSize: 13, color: theme.textMuted, marginTop: 4 }}>
                   {actionStream.endedAt ? new Date(actionStream.endedAt).toLocaleDateString() : "Recently Recorded"}
                 </Text>
+
+                <TouchableOpacity 
+                  style={{ marginTop: 24, backgroundColor: theme.accent, padding: 16, borderRadius: 12, alignItems: "center" }}
+                  onPress={() => {
+                    router.push(`/reels?startId=${actionStream.id}&hostId=${user?.id}&source=profile`);
+                    setActionStream(null);
+                  }}
+                >
+                  <Text style={{ color: theme.textOnAccent, fontWeight: "800", fontSize: 16 }}>Play Recording</Text>
+                </TouchableOpacity>
               </View>
             )}
-            <View style={styles.actionButtons}>
-              <TouchableOpacity
-                style={[styles.actionPrimaryBtn, styles.actionDeleteBtn, actionStream && deletingStreamId === actionStream.id && { opacity: 0.6 }]}
-                onPress={() => void handleDeleteSelectedStream()}
-                disabled={Boolean(actionStream && deletingStreamId === actionStream.id)}
-              >
-                <Ionicons name="trash-outline" size={18} color="#fecaca" />
-                <Text style={styles.actionDeleteText}>
-                  {actionStream && deletingStreamId === actionStream.id ? "Deleting..." : "Delete Stream"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-            <TouchableOpacity style={styles.actionCancelBtn} onPress={() => setActionStream(null)}>
-              <Text style={styles.cancelText}>Cancel</Text>
-            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -815,50 +820,52 @@ export default function ProfileScreen() {
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setActionProduct(null)} />
           <View style={styles.menuSheet}>
-            <View style={styles.menuHandle} />
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={() => setActionProduct(null)}>
+                <Text style={styles.modalHeaderLeft}>Cancel</Text>
+              </TouchableOpacity>
+              <View style={styles.modalHeaderRight}>
+                <TouchableOpacity onPress={handleEditSelectedProduct}>
+                  <Text style={styles.headerEditText}>Edit</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
             {actionProduct && (
-              <View style={styles.actionSummary}>
-                <View style={{ width: "100%", height: 220, borderRadius: 12, backgroundColor: theme.surfaceAlt, overflow: "hidden", marginBottom: 16 }}>
+              <View style={{ marginHorizontal: 24, marginBottom: 24 }}>
+                {/* Image Card */}
+                <View style={{ width: "100%", height: 320, borderRadius: 16, backgroundColor: theme.surfaceAlt, overflow: "hidden", marginBottom: 20, borderWidth: 1, borderColor: theme.border }}>
                   <ImageWithFallback 
                     uri={actionProduct.imageUrl} 
                     style={{ width: "100%", height: "100%" }}
+                    resizeMode="contain"
                     fallback={<View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}><Ionicons name="cube-outline" size={48} color={theme.textMuted} /></View>}
                   />
                 </View>
-                <Text style={[styles.actionName, { fontSize: 20 }]} numberOfLines={2}>{actionProduct.title}</Text>
-                <Text style={[styles.actionPrice, { fontSize: 18, color: theme.accent, marginTop: 4 }]}>₹{actionProduct.price.toFixed(2)}</Text>
+
+                {/* Info Text (Without background card) */}
+                <Text style={{ fontSize: 24, fontWeight: "800", color: theme.text }} numberOfLines={2}>{actionProduct.title}</Text>
+                <Text style={{ fontSize: 20, color: theme.accent, fontWeight: "700", marginTop: 8 }}>₹{actionProduct.price.toFixed(2)}</Text>
                 
-                <View style={{ flexDirection: "row", gap: 12, marginTop: 16 }}>
-                  <View style={{ flex: 1, backgroundColor: theme.surfaceAlt, padding: 12, borderRadius: 12 }}>
-                    <Text style={{ fontSize: 13, color: theme.textMuted, marginBottom: 4, fontWeight: "600" }}>Stock</Text>
-                    <Text style={{ fontSize: 16, fontWeight: "800", color: theme.text }}>{actionProduct.quantity} left</Text>
+                <View style={{ flexDirection: "row", gap: 24, marginTop: 20 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 13, color: theme.textMuted, marginBottom: 4, fontWeight: "600", textTransform: "uppercase" }}>Stock</Text>
+                    <Text style={{ fontSize: 17, fontWeight: "800", color: theme.text }}>{actionProduct.quantity} items left</Text>
                   </View>
-                  <View style={{ flex: 2, backgroundColor: theme.surfaceAlt, padding: 12, borderRadius: 12 }}>
-                    <Text style={{ fontSize: 13, color: theme.textMuted, marginBottom: 4, fontWeight: "600" }}>Available Sizes</Text>
-                    <Text style={{ fontSize: 16, fontWeight: "800", color: theme.text }} numberOfLines={1}>{actionProduct.sizes?.join(", ") || "Free Size"}</Text>
+                  <View style={{ flex: 2 }}>
+                    <Text style={{ fontSize: 13, color: theme.textMuted, marginBottom: 4, fontWeight: "600", textTransform: "uppercase" }}>Dimensions / Sizes</Text>
+                    <Text style={{ fontSize: 17, fontWeight: "800", color: theme.text }} numberOfLines={1}>{actionProduct.sizes?.join(", ") || "One Size"}</Text>
                   </View>
                 </View>
+                
+                {actionProduct.description && (
+                  <View style={{ marginTop: 20 }}>
+                     <Text style={{ fontSize: 13, color: theme.textMuted, marginBottom: 6, fontWeight: "600", textTransform: "uppercase" }}>Description</Text>
+                     <Text style={{ fontSize: 15, color: theme.text, lineHeight: 22 }}>{actionProduct.description}</Text>
+                  </View>
+                )}
               </View>
             )}
-            <View style={styles.actionButtons}>
-              <TouchableOpacity style={styles.actionPrimaryBtn} onPress={handleEditSelectedProduct}>
-                <Ionicons name="create-outline" size={18} color={theme.text} />
-                <Text style={styles.actionPrimaryText}>Edit</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.actionPrimaryBtn, styles.actionDeleteBtn, actionProduct && deletingId === actionProduct.id && { opacity: 0.6 }]}
-                onPress={() => void handleDeleteSelectedProduct()}
-                disabled={Boolean(actionProduct && deletingId === actionProduct.id)}
-              >
-                <Ionicons name="trash-outline" size={18} color="#fecaca" />
-                <Text style={styles.actionDeleteText}>
-                  {actionProduct && deletingId === actionProduct.id ? "Deleting..." : "Delete"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-            <TouchableOpacity style={styles.actionCancelBtn} onPress={() => setActionProduct(null)}>
-              <Text style={styles.cancelText}>Cancel</Text>
-            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -1153,15 +1160,9 @@ const createStyles = (theme: AppTheme) =>
     // Stream List
     streamCard: {
       width: CARD_WIDTH,
-      backgroundColor: theme.surface,
-      borderRadius: 16,
+      borderRadius: 12,
       overflow: "hidden",
-      borderWidth: 1,
-      borderColor: theme.border,
-      // Subtle shadow for depth matching gridCard
-      ...(Platform.OS === "ios"
-        ? { shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 8 }
-        : { elevation: 2 }),
+      backgroundColor: theme.surfaceAlt,
     },
     streamThumbnail: {
       width: "100%",
@@ -1181,21 +1182,18 @@ const createStyles = (theme: AppTheme) =>
       alignItems: "center",
     },
     playOverlay: {
-      ...StyleSheet.absoluteFillObject,
-      backgroundColor: "rgba(0,0,0,0.15)",
-      justifyContent: "center",
-      alignItems: "center",
+      position: "absolute",
+      top: 8,
+      left: 8,
       zIndex: 1,
     },
     playIconCircle: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      backgroundColor: "rgba(0,0,0,0.4)",
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      backgroundColor: "rgba(0,0,0,0.5)",
       justifyContent: "center",
       alignItems: "center",
-      borderWidth: 1.5,
-      borderColor: "rgba(255,255,255,0.8)",
     },
     reelBadge: {
       position: "absolute",
@@ -1215,24 +1213,46 @@ const createStyles = (theme: AppTheme) =>
       fontSize: 10,
       fontWeight: "800",
     },
-    streamInfo: {
-      padding: 12,
-    },
-    streamTitle: {
-      fontSize: 14,
-      fontWeight: "600",
-      color: theme.text,
-      marginBottom: 6,
-    },
-    streamMetaRow: {
+
+    // Modal Header
+    modalHeader: {
       flexDirection: "row",
+      justifyContent: "space-between",
       alignItems: "center",
-      gap: 6,
+      paddingHorizontal: 20,
+      paddingVertical: 16,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.border,
+      marginBottom: 20,
     },
-    streamDate: {
-      fontSize: 12,
-      color: theme.textMuted,
+    modalHeaderTitle: {
+      fontSize: 17,
+      fontWeight: "700",
+      color: theme.text,
+    },
+    modalHeaderLeft: {
+      fontSize: 16,
+      color: theme.text,
       fontWeight: "500",
     },
-
+    modalHeaderRight: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 16,
+    },
+    headerDeleteText: {
+      color: theme.danger,
+      fontWeight: "600",
+      fontSize: 16,
+    },
+    headerEditText: {
+      color: theme.text,
+      fontWeight: "600",
+      fontSize: 16,
+    },
+    headerActionText: {
+      color: theme.accent,
+      fontWeight: "700",
+      fontSize: 16,
+    },
   });

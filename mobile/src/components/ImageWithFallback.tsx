@@ -13,6 +13,7 @@ interface ImageWithFallbackProps {
   fallback?: ReactNode;
   fallbackText?: string;
   fallbackStyle?: StyleProp<TextStyle>;
+  resizeMode?: "cover" | "contain" | "stretch" | "repeat" | "center";
 }
 
 export default function ImageWithFallback({
@@ -21,6 +22,7 @@ export default function ImageWithFallback({
   fallback,
   fallbackText,
   fallbackStyle,
+  resizeMode,
 }: ImageWithFallbackProps) {
   const [hasError, setHasError] = useState(false);
 
@@ -35,5 +37,5 @@ export default function ImageWithFallback({
     return <Text style={fallbackStyle}>{fallbackText}</Text>;
   }
 
-  return <Image source={{ uri }} style={style} onError={() => setHasError(true)} />;
+  return <Image source={{ uri }} style={style} resizeMode={resizeMode} onError={() => setHasError(true)} />;
 }
