@@ -447,7 +447,6 @@ export default function HomeScreen() {
 
         <View style={styles.followingFooter}>
           <Text style={styles.followingCaption}>
-            <Text style={styles.followingCaptionName}>{item.host?.name}</Text>{" "}
             <Text style={styles.followingCaptionText}>{item.title}</Text>
           </Text>
         </View>

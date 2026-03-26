@@ -60,7 +60,6 @@ export default function ProfileScreen() {
   const [followingCount, setFollowingCount] = useState(0);
   const [streams, setStreams] = useState<LiveSession[]>([]);
   const [fetchingStreams, setFetchingStreams] = useState(false);
-  const [actionStream, setActionStream] = useState<LiveSession | null>(null);
   const [deletingStreamId, setDeletingStreamId] = useState<string | null>(null);
 
   const pagerRef = useRef<ScrollView>(null);
@@ -322,13 +321,6 @@ export default function ProfileScreen() {
     }
   }
 
-  async function handleDeleteSelectedStream() {
-    if (!actionStream) return;
-    const id = actionStream.id;
-    setActionStream(null);
-    await handleDeleteStream(id);
-  }
-
   async function handleDeleteProduct(id: string) {
     try {
       setDeletingId(id);
@@ -511,7 +503,12 @@ export default function ProfileScreen() {
           }
         }}
 
-        onLongPress={() => setActionStream(item)}
+        onLongPress={() => {
+          Alert.alert("Delete Recording", `Are you sure you want to delete this stream recording?`, [
+            { text: "Cancel", style: "cancel" },
+            { text: "Delete", style: "destructive", onPress: () => void handleDeleteStream(item.id) },
+          ]);
+        }}
         activeOpacity={0.7}
       >
         <View style={styles.streamThumbnail}>
@@ -765,61 +762,6 @@ export default function ProfileScreen() {
             </View>
           </View>
         </KeyboardAvoidingView>
-      </Modal>
-
-      {/* Stream Action Modal (Delete) */}
-
-      <Modal visible={Boolean(actionStream)} transparent animationType="fade" onRequestClose={() => setActionStream(null)}>
-        <View style={styles.modalOverlay}>
-          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setActionStream(null)} />
-          <View style={styles.menuSheet}>
-            <View style={styles.modalHeader}>
-              <TouchableOpacity onPress={() => setActionStream(null)}>
-                <Text style={styles.modalHeaderLeft}>Cancel</Text>
-              </TouchableOpacity>
-              <View style={styles.modalHeaderRight}>
-                <TouchableOpacity
-                  onPress={() => void handleDeleteSelectedStream()}
-                  disabled={Boolean(actionStream && deletingStreamId === actionStream.id)}
-                >
-                  {actionStream && deletingStreamId === actionStream.id ? (
-                    <ActivityIndicator size="small" color={theme.danger} />
-                  ) : (
-                    <Ionicons name="trash-outline" size={20} color={theme.danger} />
-                  )}
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {actionStream && (
-              <View style={styles.actionSummary}>
-                <View style={{ width: "100%", height: 180, borderRadius: 12, backgroundColor: theme.surfaceAlt, overflow: "hidden", marginBottom: 16 }}>
-                  {actionStream.thumbnailUrl ? (
-                    <Image source={{ uri: actionStream.thumbnailUrl }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
-                  ) : (
-                    <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-                      <Ionicons name="videocam-outline" size={48} color={theme.textMuted} />
-                    </View>
-                  )}
-                </View>
-                <Text style={[styles.actionName, { fontSize: 18 }]} numberOfLines={2}>{actionStream.title}</Text>
-                <Text style={{ fontSize: 13, color: theme.textMuted, marginTop: 4 }}>
-                  {actionStream.endedAt ? new Date(actionStream.endedAt).toLocaleDateString() : "Recently Recorded"}
-                </Text>
-
-                <TouchableOpacity 
-                  style={{ marginTop: 24, backgroundColor: theme.accent, padding: 16, borderRadius: 12, alignItems: "center" }}
-                  onPress={() => {
-                    router.push(`/reels?startId=${actionStream.id}&hostId=${user?.id}&source=profile`);
-                    setActionStream(null);
-                  }}
-                >
-                  <Text style={{ color: theme.textOnAccent, fontWeight: "800", fontSize: 16 }}>Play Recording</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-        </View>
       </Modal>
 
       {/* Product Action Modal (Edit / Delete) */}
