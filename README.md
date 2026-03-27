@@ -2,6 +2,12 @@
 
 Live commerce app — hosts can stream video, viewers can watch and react in real time.
 
+<p align="center">
+  <img src="assets/Simulator Screenshot - iPhone 16e - 2026-03-27 at 21.54.59.png" width="30%" />
+  <img src="assets/Simulator Screenshot - iPhone 16e - 2026-03-27 at 21.55.31.png" width="30%" />
+  <img src="assets/Simulator Screenshot - iPhone 16e - 2026-03-27 at 21.55.36.png" width="30%" />
+</p>
+
 The repo has two parts:
 - `backend` — Node.js + Express + TypeScript + Prisma + Socket.io + LiveKit
 - `mobile` — React Native + Expo Router + LiveKit WebRTC
@@ -11,6 +17,40 @@ The repo has two parts:
 Hosts publish a video stream via WebRTC to a LiveKit SFU. Viewers subscribe to that stream, also via WebRTC. The backend handles everything else — auth, session management, chat, reactions, and viewer counts over Socket.io.
 
 LiveKit takes care of simulcast and adaptive bitrate, so stream quality adjusts automatically based on each viewer's connection. The backend is stateless and can scale horizontally; Socket.io just needs a Redis adapter wired up for multi-instance deployments.
+
+## Tech stack
+
+**Infrastructure**
+
+The backend runs on EC2. Cloudflare sits in front of it for DDoS protection, caching, and routing. Static assets and recorded media are stored in Cloudflare R2 — it's S3-compatible so the AWS SDK works against it without any changes, and egress is free which matters when you're serving video thumbnails and clips at scale.
+
+**LiveKit**
+
+LiveKit is a WebRTC SFU (Selective Forwarding Unit). Instead of every viewer connecting directly to the host (which would kill the host's upload), everyone connects to LiveKit and it handles distribution. The backend generates short-lived JWT tokens that grant publish or subscribe access to a room. LiveKit also sends webhook events back to the backend when rooms open/close, which is how session state stays in sync.
+
+**Socket.io**
+
+Used for everything that needs to be pushed in real time but isn't video — chat messages, reactions, and live viewer counts. It runs on the same Express server over a shared HTTP instance. For multi-server deployments, dropping in `@socket.io/redis-adapter` is enough to make it work across instances.
+
+**FFmpeg**
+
+Used server-side via `fluent-ffmpeg` for post-processing recorded streams — things like transcoding egress recordings from LiveKit into web-friendly formats or extracting thumbnails. FFmpeg needs to be installed on the host machine separately.
+
+**Gemini**
+
+Gemini AI is wired in for any generative features — things like auto-generating stream descriptions or moderating chat. Uses the `gemini-2.5-flash` model by default, configurable via env.
+
+**Nodemailer / SMTP**
+
+Handles transactional email (auth flows, notifications). Works with any SMTP provider — just point it at your host and credentials.
+
+**Database**
+
+PostgreSQL via Prisma. Prisma handles schema migrations and generates a fully-typed client, so there's no raw SQL anywhere in the codebase.
+
+**Mobile**
+
+React Native with Expo Router for file-based navigation. LiveKit's React Native SDK wraps the native WebRTC libraries for publishing and subscribing to streams. Socket.io client connects to the backend for real-time events.
 
 ## Prerequisites
 
