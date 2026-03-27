@@ -305,79 +305,75 @@ export default function HomeScreen() {
 
   function renderSession({ item }: { item: LiveSession }) {
     const isOwn = item.hostId === user?.id;
-    const isFollowed = followedIds.has(item.hostId);
-    const isLoadingFollow = followingId === item.hostId;
-    return (
-      <TouchableOpacity
-        style={styles.sessionCard}
-        onPress={() => {
-          if (isOwn) {
-            router.push(`/host/${item.id}`);
-          } else if (item.isLive) {
-            router.push(`/viewer/${item.id}`);
-          } else if (item.recordingUrl) {
-            router.push(`/reels?startId=${item.id}&source=following`);
-          }
-        }}
-        activeOpacity={0.7}
-      >
-        <View style={styles.sessionVideoPlaceholder}>
-          {item.thumbnailUrl ? (
-            <Image source={{ uri: item.thumbnailUrl }} style={styles.thumbnailImage} />
-          ) : (
-            <Ionicons name="videocam" size={48} color={theme.textMuted} />
-          )}
+    const isLive = item.isLive;
+    const timeText = isLive ? "LIVE" : formatTime(item.startedAt);
 
-          {item.isLive ? (
-            <View style={styles.liveBadge}>
+    return (
+      <View style={styles.sessionCard}>
+        <TouchableOpacity
+          style={styles.followingHeader}
+          onPress={() => router.push(`/user/${item.hostId}`)}
+          activeOpacity={0.7}
+        >
+          <ImageWithFallback
+            uri={item.host?.avatarUrl}
+            style={styles.followingAvatar}
+            fallback={
+              <View style={styles.followingAvatarPlaceholder}>
+                <Text style={styles.followingAvatarText}>
+                  {(item.host?.name || "?").charAt(0).toUpperCase()}
+                </Text>
+              </View>
+            }
+          />
+          <View>
+            <Text style={styles.followingHostName}>{item.host?.name || "Unknown"}</Text>
+            <Text style={styles.followingSubtext}>{isLive ? "Live now" : timeText}</Text>
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.followingThumbnailContainer}
+          onPress={() => {
+            if (isOwn) {
+              router.push(`/host/${item.id}`);
+            } else if (item.isLive) {
+              router.push(`/viewer/${item.id}`);
+            } else if (item.recordingUrl) {
+              router.push(`/reels?startId=${item.id}&source=following`);
+            }
+          }}
+          activeOpacity={0.9}
+        >
+          {item.thumbnailUrl ? (
+            <Image
+              source={{ uri: item.thumbnailUrl }}
+              style={styles.followingThumbnail}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={styles.followingThumbnailPlaceholder}>
+              <Ionicons name="videocam" size={48} color={theme.textMuted} />
+            </View>
+          )}
+          {isLive ? (
+            <View style={styles.followingLiveBadge}>
               <View style={styles.liveDot} />
               <Text style={styles.liveText}>LIVE</Text>
             </View>
           ) : item.recordingUrl ? (
-            <>
-              <View style={[styles.liveBadge, { backgroundColor: "rgba(15, 23, 42, 0.75)" }]}>
-                <Ionicons name="play-circle" size={14} color="#fff" style={{ marginRight: 6 }} />
-                <Text style={styles.liveText}>RECORDED</Text>
-              </View>
-              {item.thumbnailUrl && (
-                <View style={styles.playOverlay}>
-                  <Ionicons name="play" size={32} color="#fff" />
-                </View>
-              )}
-            </>
-          ) : null}
-        </View>
-        <View style={styles.sessionInfo}>
-          <Text style={styles.sessionTitle} numberOfLines={1}>{item.title}</Text>
-          <View style={styles.sessionMeta}>
-            <Text style={styles.sessionHost}>{item.host?.name || "Unknown"}</Text>
-            <View style={styles.sessionMetaRight}>
-              {item.viewerCount > 0 && (
-                <View style={styles.sessionViewers}>
-                  <Ionicons name="eye-outline" size={14} color={theme.textMuted} />
-                  <Text style={styles.sessionViewersText}>{item.viewerCount}</Text>
-                </View>
-              )}
-              {!isOwn && (
-                <TouchableOpacity
-                  style={[styles.followButton, isFollowed && styles.followButtonActive]}
-                  onPress={(e) => handleFollow(item.hostId, e)}
-                  disabled={isLoadingFollow}
-                  activeOpacity={0.75}
-                >
-                  {isLoadingFollow ? (
-                    <ActivityIndicator size="small" color={isFollowed ? theme.textMuted : theme.textOnAccent} />
-                  ) : (
-                    <Text style={[styles.followButtonText, isFollowed && styles.followButtonTextActive]}>
-                      {isFollowed ? "Following" : "Follow"}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              )}
+            <View style={styles.followingPlayOverlay}>
+              <Ionicons name="play" size={48} color="rgba(255,255,255,0.8)" />
             </View>
-          </View>
+          ) : null}
+        </TouchableOpacity>
+
+        <View style={styles.followingFooter}>
+          <Text style={styles.followingCaption}>
+            <Text style={styles.followingCaptionText}>{item.title}</Text>
+          </Text>
         </View>
-      </TouchableOpacity>
+      </View>
     );
   }
 
@@ -784,10 +780,12 @@ const createStyles = (theme: AppTheme) =>
   list: { padding: 16, paddingBottom: 100 },
   listFollowing: { paddingBottom: 100 },
   sessionCard: {
-    backgroundColor: theme.surface,
-    borderRadius: 16,
-    marginBottom: 16,
+    backgroundColor: "transparent",
+    marginBottom: 8,
     overflow: "hidden",
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
+    paddingBottom: 20,
   },
   // Redesigned Following Card Styles (Instagram Aesthetic)
   followingCard: {
