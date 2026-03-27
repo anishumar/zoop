@@ -42,14 +42,42 @@ cp .env.example .env
 ```
 
 ```env
-DATABASE_URL=postgresql://<user>:<password>@<host>:<port>/<db>?schema=public
-JWT_SECRET=<strong-random-secret>
+# Server
 PORT=3000
 NODE_ENV=development
+ALLOWED_ORIGINS="*"
+LOG_LEVEL=info
 
-LIVEKIT_API_KEY=devkey
-LIVEKIT_API_SECRET=secret
-LIVEKIT_URL=ws://localhost:7880
+# Database
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/zoop_live?schema=public"
+
+# Auth
+JWT_SECRET="your-secret-key-here"
+
+# Cloudflare R2 (S3-compatible)
+R2_BUCKET="zoop-assets"
+R2_ACCOUNT_ID="your-cloudflare-account-id"
+R2_ACCESS_KEY="your-r2-access-key"
+R2_SECRET_KEY="your-r2-secret-key"
+R2_PUBLIC_URL="https://pub-xxxx.r2.dev"
+
+# LiveKit
+LIVEKIT_API_KEY="devkey"
+LIVEKIT_API_SECRET="secret"
+LIVEKIT_URL="ws://localhost:7880"
+LIVEKIT_WEBHOOK_KEY=""
+
+# Gemini AI
+GEMINI_API_KEY=""
+GEMINI_MODEL="gemini-2.5-flash"
+
+# SMTP (email)
+SMTP_HOST="smtp.example.com"
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER="your-smtp-username"
+SMTP_PASS="your-smtp-password"
+SMTP_FROM="noreply@example.com"
 ```
 
 **Mobile:**
