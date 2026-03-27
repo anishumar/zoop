@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(grep -n \"reaction\\\\|emoji\\\\|REACTION\\\\|🔥\\\\|❤\\\\|😂\\\\|👏\\\\|💯\" /Users/anishumar/Desktop/zoop/mobile/app/viewer/[id].tsx)",
-      "Bash(grep:*)"
-    ]
-  }
-}
