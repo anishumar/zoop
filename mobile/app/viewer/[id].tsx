@@ -444,13 +444,13 @@ export default function ViewerScreen() {
             <View style={styles.sideControlsWrapper} pointerEvents="box-none">
               <View style={styles.floatingReactions}>
                 {floatingReactions.map((r) => (
-                  <Text key={r.id} style={styles.floatingEmoji}>{r.emoji}</Text>
+                  <Text key={r.id} style={styles.floatingEmoji} allowFontScaling={false}>{r.emoji}</Text>
                 ))}
               </View>
               <View style={styles.reactionBar}>
                 {REACTIONS.map((emoji) => (
                   <TouchableOpacity key={emoji} style={styles.reactionButton} onPress={() => sendReaction(emoji)}>
-                    <Text style={styles.reactionEmoji}>{emoji}</Text>
+                    <Text style={styles.reactionEmoji} allowFontScaling={false}>{emoji}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -767,7 +767,7 @@ const createStyles = (theme: AppTheme) =>
     alignItems: "center",
     marginBottom: 8,
   },
-  floatingEmoji: { fontSize: 28, marginBottom: 4 },
+  floatingEmoji: { fontSize: 28, marginBottom: 4, color: "#ffffff" },
   reactionBar: {
     alignItems: "center",
     gap: 4,
@@ -779,8 +779,9 @@ const createStyles = (theme: AppTheme) =>
     height: 44,
     alignItems: "center",
     justifyContent: "center",
+    opacity: 0.99,
   },
-  reactionEmoji: { fontSize: 22 },
+  reactionEmoji: { fontSize: 22, color: "#ffffff" },
 
   // Bottom input bar
   inputBarWrapper: {
