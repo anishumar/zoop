@@ -20,12 +20,11 @@ import { rateLimiter } from "../middlewares/rateLimiter";
 const router = Router();
 
 router.get("/live", listLiveSessions);
+router.get("/live/following", authenticate, listLiveFollowingSessions);
 router.get("/:id", getSession);
 router.get("/:id/analytics", getSessionAnalytics);
 
 router.use(authenticate);
-
-router.get("/live/following", listLiveFollowingSessions);
 router.get("/user/:hostId/archived", getUserArchivedSessions);
 
 router.post(
