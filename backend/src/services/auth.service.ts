@@ -1,7 +1,9 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
 import prisma from "../prisma/client";
 import { ApiError } from "../utils/ApiError";
+import { sendPasswordResetEmail } from "../utils/email";
 
 const SALT_ROUNDS = 10;
 
@@ -59,6 +61,50 @@ export class AuthService {
     });
     if (!user) throw new ApiError(404, "User not found");
     return user;
+  }
+
+  static async forgotPassword(email: string): Promise<void> {
+    // Always return success to avoid user enumeration
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) return;
+
+    const otp = crypto.randomInt(100000, 999999).toString();
+    const hashed = await bcrypt.hash(otp, 10);
+    const expiry = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { passwordResetToken: hashed, passwordResetExpiry: expiry },
+    });
+
+    await sendPasswordResetEmail(email, otp);
+  }
+
+  static async resetPassword(email: string, otp: string, newPassword: string): Promise<void> {
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user || !user.passwordResetToken || !user.passwordResetExpiry) {
+      throw new ApiError(400, "Invalid or expired reset code");
+    }
+
+    if (new Date() > user.passwordResetExpiry) {
+      throw new ApiError(400, "Reset code has expired");
+    }
+
+    const valid = await bcrypt.compare(otp, user.passwordResetToken);
+    if (!valid) {
+      throw new ApiError(400, "Invalid reset code");
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, SALT_ROUNDS);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: hashedPassword,
+        passwordResetToken: null,
+        passwordResetExpiry: null,
+      },
+    });
   }
 
   private static generateToken(userId: string): string {

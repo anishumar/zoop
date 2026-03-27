@@ -26,3 +26,22 @@ export const getProfile = catchAsync(async (req: Request, res: Response) => {
   const user = await AuthService.getProfile(req.user!.userId);
   sendSuccess(res, user);
 });
+
+export const forgotPassword = catchAsync(async (req: Request, res: Response) => {
+  const { email } = req.body;
+  if (!email) throw new ApiError(400, "Email is required");
+  await AuthService.forgotPassword(email.trim().toLowerCase());
+  sendSuccess(res, null, "If that email exists, a reset code has been sent");
+});
+
+export const resetPassword = catchAsync(async (req: Request, res: Response) => {
+  const { email, otp, newPassword } = req.body;
+  if (!email || !otp || !newPassword) {
+    throw new ApiError(400, "Email, code, and new password are required");
+  }
+  if (newPassword.length < 6) {
+    throw new ApiError(400, "Password must be at least 6 characters");
+  }
+  await AuthService.resetPassword(email.trim().toLowerCase(), otp.trim(), newPassword);
+  sendSuccess(res, null, "Password reset successfully");
+});

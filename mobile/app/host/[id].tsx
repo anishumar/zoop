@@ -581,7 +581,6 @@ export default function HostScreen() {
               value={replyDraft}
               onChangeText={setReplyDraft}
               multiline={true}
-              numberOfLines={1}
             />
             <TouchableOpacity
               style={[styles.sendButton, (!replyDraft.trim() || isSendingReply) && { opacity: 0.5 }]}
@@ -1044,13 +1043,16 @@ const createStyles = (theme: AppTheme) =>
     backgroundColor: theme.surface,
     borderRadius: 12,
     paddingHorizontal: 16,
-    paddingVertical: Platform.OS === "ios" ? 10 : 8,
+    paddingTop: Platform.OS === "ios" ? 10 : 10,
+    paddingBottom: Platform.OS === "ios" ? 10 : 10,
     fontSize: 15,
+    lineHeight: 22,
     color: theme.text,
     borderWidth: 1,
     borderColor: theme.border,
     minHeight: 44,
-    maxHeight: 100, // Roughly 4 lines
+    maxHeight: 96, // 3 lines (3 * 22 lineHeight + 20 padding + 2 border)
+    textAlignVertical: "top",
   },
   sendButton: {
     backgroundColor: theme.accent,

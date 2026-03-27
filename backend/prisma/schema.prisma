@@ -29,6 +29,9 @@ model User {
 
   wishlist Wishlist[]
 
+  passwordResetToken  String?
+  passwordResetExpiry DateTime?
+
   @@map("users")
 }
 
